@@ -88,6 +88,11 @@ TABLES: List[TableDef] = [
             ColumnDef("score", "DECIMAL(10,2)"),
             ColumnDef("active", "INTEGER", nullable=False, default="1"),
             ColumnDef("created_at", "TIMESTAMP"),
+            ColumnDef("manager_id", "INTEGER"),  # 自关联 FK，用于递归 CTE / 自连接
+            ColumnDef("profile", "VARCHAR(500)"),  # JSON 格式用户配置
+        ],
+        foreign_keys=[
+            ForeignKeyDef("manager_id", "t_users", "id"),
         ],
     ),
     # ---------- t_products ----------
@@ -100,6 +105,7 @@ TABLES: List[TableDef] = [
             ColumnDef("price", "DECIMAL(10,2)", nullable=False),
             ColumnDef("stock", "INTEGER"),
             ColumnDef("discontinued", "INTEGER", nullable=False, default="0"),
+            ColumnDef("metadata", "VARCHAR(500)"),  # JSON 格式产品属性
         ],
     ),
     # ---------- t_orders ----------

@@ -1,0 +1,1 @@
+SELECT json_extract(profile, '$.theme') AS theme, COUNT(*) AS cnt FROM t_users WHERE profile IS NOT NULL AND json_extract(profile, '$.theme') IS NOT NULL GROUP BY json_extract(profile, '$.theme') ORDER BY theme

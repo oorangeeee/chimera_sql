@@ -1,0 +1,1 @@
+SELECT a.id AS id1, b.id AS id2, a.username AS user1, b.username AS user2, a.manager_id FROM t_users a INNER JOIN t_users b ON a.manager_id = b.manager_id AND a.id < b.id WHERE a.manager_id IS NOT NULL ORDER BY a.manager_id, a.id, b.id

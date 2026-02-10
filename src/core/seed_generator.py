@@ -1,6 +1,6 @@
 """种子 SQL 生成器 — 按类别生成覆盖各类 SQL 特性的种子文件。
 
-生成约 50 个 .sql 文件，分为 8 个类别子目录。
+生成约 70 个 .sql 文件，分为 11 个类别子目录。
 所有种子使用通用 SQL 方言，后续由 transpiler 模块转译。
 
 设计原则：
@@ -9,6 +9,8 @@
 3. 只引用 5 张测试表
 4. 故意查询含 NULL 的列（NULL 处理是 Oracle/SQLite 差异重灾区）
 5. 不含 RIGHT JOIN（SQLite 3.39.0 前不支持）
+6. 递归 CTE 使用 WITH RECURSIVE（SQLite 要求），transpiler 转译时为 Oracle 去掉 RECURSIVE
+7. JSON 函数使用 json_extract()（SQLite 原生），transpiler 转译为 Oracle 的 JSON_VALUE()
 """
 
 from pathlib import Path
@@ -363,6 +365,145 @@ _SEEDS: Dict[str, List[Tuple[str, str]]] = {
             "INNER JOIN t_users u ON o.user_id = u.id "
             "INNER JOIN t_products p ON o.product_id = p.id "
             "ORDER BY o.id",
+        ),
+    ],
+    # ── 09 递归/自关联 ─────────────────────────────
+    "09_recursive_self_join": [
+        (
+            "direct_reports.sql",
+            "SELECT m.id AS manager_id, m.username AS manager, "
+            "e.id AS employee_id, e.username AS employee "
+            "FROM t_users e "
+            "INNER JOIN t_users m ON e.manager_id = m.id "
+            "ORDER BY m.id, e.id",
+        ),
+        (
+            "recursive_hierarchy.sql",
+            "WITH RECURSIVE hierarchy(id, username, manager_id, lvl) AS ("
+            "SELECT id, username, manager_id, 0 AS lvl "
+            "FROM t_users WHERE manager_id IS NULL "
+            "UNION ALL "
+            "SELECT e.id, e.username, e.manager_id, h.lvl + 1 "
+            "FROM t_users e INNER JOIN hierarchy h ON e.manager_id = h.id"
+            ") SELECT id, username, manager_id, lvl FROM hierarchy ORDER BY id",
+        ),
+        (
+            "recursive_depth.sql",
+            "WITH RECURSIVE depth_cte(id, username, lvl) AS ("
+            "SELECT id, username, 0 AS lvl "
+            "FROM t_users WHERE manager_id IS NULL "
+            "UNION ALL "
+            "SELECT e.id, e.username, d.lvl + 1 "
+            "FROM t_users e INNER JOIN depth_cte d ON e.manager_id = d.id"
+            ") SELECT id, username, lvl FROM depth_cte ORDER BY lvl, id",
+        ),
+        (
+            "recursive_subordinate_count.sql",
+            "WITH RECURSIVE sub_tree(id, root_id) AS ("
+            "SELECT id, id AS root_id "
+            "FROM t_users WHERE manager_id IS NULL "
+            "UNION ALL "
+            "SELECT e.id, s.root_id "
+            "FROM t_users e INNER JOIN sub_tree s ON e.manager_id = s.id"
+            ") SELECT root_id, COUNT(*) - 1 AS subordinate_count "
+            "FROM sub_tree GROUP BY root_id ORDER BY root_id",
+        ),
+        (
+            "root_nodes.sql",
+            "SELECT id, username FROM t_users "
+            "WHERE manager_id IS NULL ORDER BY id",
+        ),
+        (
+            "same_manager_pairs.sql",
+            "SELECT a.id AS id1, b.id AS id2, "
+            "a.username AS user1, b.username AS user2, "
+            "a.manager_id "
+            "FROM t_users a "
+            "INNER JOIN t_users b ON a.manager_id = b.manager_id AND a.id < b.id "
+            "WHERE a.manager_id IS NOT NULL "
+            "ORDER BY a.manager_id, a.id, b.id",
+        ),
+    ],
+    # ── 10 字符串排序/Unicode ──────────────────────
+    "10_string_collation": [
+        (
+            "upper_lower.sql",
+            "SELECT id, username, UPPER(username) AS upper_name, "
+            "LOWER(username) AS lower_name "
+            "FROM t_users ORDER BY id",
+        ),
+        (
+            "length_unicode.sql",
+            "SELECT id, username, LENGTH(username) AS name_len "
+            "FROM t_users ORDER BY id",
+        ),
+        (
+            "like_unicode.sql",
+            "SELECT id, username FROM t_users "
+            "WHERE username LIKE '%e%' ORDER BY id",
+        ),
+        (
+            "string_comparison.sql",
+            "SELECT id, username FROM t_users "
+            "WHERE username > 'b' ORDER BY id",
+        ),
+        (
+            "trim_strings.sql",
+            "SELECT id, TRIM(username) AS trimmed_name, "
+            "LENGTH(TRIM(username)) AS trimmed_len "
+            "FROM t_users ORDER BY id",
+        ),
+        (
+            "substr_unicode.sql",
+            "SELECT id, username, SUBSTR(username, 1, 3) AS prefix "
+            "FROM t_users ORDER BY id",
+        ),
+    ],
+    # ── 11 JSON 处理 ─────────────────────────────
+    # 使用 json_extract() 语法（SQLite 原生），transpiler 转译为 Oracle 的 JSON_VALUE()
+    "11_json_handling": [
+        (
+            "json_extract_scalar.sql",
+            "SELECT id, username, "
+            "json_extract(profile, '$.theme') AS theme, "
+            "json_extract(profile, '$.lang') AS lang "
+            "FROM t_users WHERE profile IS NOT NULL ORDER BY id",
+        ),
+        (
+            "json_null_handling.sql",
+            "SELECT id, username, profile, "
+            "json_extract(profile, '$.theme') AS theme "
+            "FROM t_users ORDER BY id",
+        ),
+        (
+            "json_in_where.sql",
+            "SELECT id, username FROM t_users "
+            "WHERE json_extract(profile, '$.theme') = 'dark' ORDER BY id",
+        ),
+        (
+            "json_with_aggregation.sql",
+            "SELECT json_extract(profile, '$.theme') AS theme, "
+            "COUNT(*) AS cnt "
+            "FROM t_users "
+            "WHERE profile IS NOT NULL "
+            "AND json_extract(profile, '$.theme') IS NOT NULL "
+            "GROUP BY json_extract(profile, '$.theme') "
+            "ORDER BY theme",
+        ),
+        (
+            "json_nested_array.sql",
+            "SELECT id, name, "
+            "json_extract(metadata, '$.warranty') AS warranty "
+            "FROM t_products "
+            "WHERE metadata IS NOT NULL "
+            "AND json_extract(metadata, '$.warranty') IS NOT NULL "
+            "ORDER BY id",
+        ),
+        (
+            "json_coalesce.sql",
+            "SELECT id, username, "
+            "COALESCE(json_extract(profile, '$.lang'), 'unknown') AS lang "
+            "FROM t_users ORDER BY id",
         ),
     ],
 }

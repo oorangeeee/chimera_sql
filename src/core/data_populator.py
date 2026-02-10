@@ -37,43 +37,88 @@ def _ts(s: str) -> datetime:
 # ────────────────────────────────────────────────────────
 
 # ── t_users ──────────────────────────────────────────
-_USERS_COLS = ("id", "username", "email", "age", "score", "active", "created_at")
+_USERS_COLS = ("id", "username", "email", "age", "score", "active", "created_at", "manager_id", "profile")
 _USERS_ROWS: List[Tuple[Any, ...]] = [
-    (1, "alice", "alice@example.com", 25, 88.50, 1, _ts("2024-01-15 10:30:00")),
-    (2, "bob", "bob@example.com", 30, 92.00, 1, _ts("2024-02-20 14:00:00")),
-    (3, "charlie", None, 0, 75.25, 1, _ts("2024-03-10 08:15:00")),
-    (4, "diana", "diana@example.com", -1, None, 0, _ts("2024-04-05 16:45:00")),
-    (5, "eve", "", 999, 100.00, 1, None),
-    (6, "frank", "frank@example.com", 18, 0.00, 1, _ts("2024-06-01 12:00:00")),
-    (7, "grace", None, None, -10.50, 0, _ts("2024-07-22 09:30:00")),
-    (8, "heidi", "heidi@example.com", 45, 55.55, 1, _ts("2024-08-15 18:20:00")),
-    (9, "ivan", "ivan@example.com", 22, 99.99, 1, _ts("2024-09-01 07:00:00")),
-    (10, "judy", "", 35, 60.00, 0, _ts("2024-10-10 20:10:00")),
-    (11, "kevin", "kevin@example.com", 28, None, 1, _ts("2024-11-05 11:45:00")),
-    (12, "linda", None, 0, 33.33, 1, None),
-    (13, "mike", "mike@example.com", 50, 77.77, 0, _ts("2024-12-25 00:00:00")),
-    (14, "nancy", "nancy@example.com", -1, 0.01, 1, _ts("2025-01-01 23:59:59")),
-    (15, "oscar", "", None, None, 1, None),
+    # alice (1) ← 根节点
+    (1, "alice", "alice@example.com", 25, 88.50, 1, _ts("2024-01-15 10:30:00"),
+     None, '{"theme": "dark", "lang": "en"}'),
+    # bob (2) → 上级 alice
+    (2, "bob", "bob@example.com", 30, 92.00, 1, _ts("2024-02-20 14:00:00"),
+     1, '{"theme": "light", "lang": "en", "notifications": true}'),
+    # Charlie (3) → 上级 alice（大小写 Unicode）
+    (3, "Charlie", None, 0, 75.25, 1, _ts("2024-03-10 08:15:00"),
+     1, None),
+    # diana (4) → 上级 bob
+    (4, "diana", "diana@example.com", -1, None, 0, _ts("2024-04-05 16:45:00"),
+     2, '{}'),
+    # Ève (5) → 上级 bob（拉丁重音 Unicode）
+    (5, "Ève", "", 999, 100.00, 1, None,
+     2, '{"theme": "dark"}'),
+    # frank (6) → 上级 charlie
+    (6, "frank", "frank@example.com", 18, 0.00, 1, _ts("2024-06-01 12:00:00"),
+     3, '{"lang": "fr", "timezone": "UTC+1"}'),
+    # grace (7) ← 根节点
+    (7, "grace", None, None, -10.50, 0, _ts("2024-07-22 09:30:00"),
+     None, '{"theme": "light"}'),
+    # heidi (8) → 上级 grace
+    (8, "heidi", "heidi@example.com", 45, 55.55, 1, _ts("2024-08-15 18:20:00"),
+     7, None),
+    # ivan (9) ← 根节点（叶子）
+    (9, "ivan", "ivan@example.com", 22, 99.99, 1, _ts("2024-09-01 07:00:00"),
+     None, '{"theme": "dark", "lang": "ru"}'),
+    # 小明 (10) → 上级 heidi（CJK Unicode）
+    (10, "小明", "", 35, 60.00, 0, _ts("2024-10-10 20:10:00"),
+     8, '{"lang": "zh", "notifications": false}'),
+    # kevin (11) → 上级 charlie
+    (11, "kevin", "kevin@example.com", 28, None, 1, _ts("2024-11-05 11:45:00"),
+     3, '{}'),
+    # linda (12) ← 根节点（叶子）
+    (12, "linda", None, 0, 33.33, 1, None,
+     None, None),
+    # mike (13) → 上级 grace
+    (13, "mike", "mike@example.com", 50, 77.77, 0, _ts("2024-12-25 00:00:00"),
+     7, '{"theme": "system"}'),
+    # O'Brien (14) ← 根节点（叶子，撇号 Unicode）
+    (14, "O'Brien", "nancy@example.com", -1, 0.01, 1, _ts("2025-01-01 23:59:59"),
+     None, '{"lang": "en", "theme": "dark"}'),
+    # José (15) → 上级 diana（拉丁重音 Unicode）
+    (15, "José", "", None, None, 1, None,
+     4, None),
 ]
 
 # ── t_products ───────────────────────────────────────
-_PRODUCTS_COLS = ("id", "name", "category", "price", "stock", "discontinued")
+_PRODUCTS_COLS = ("id", "name", "category", "price", "stock", "discontinued", "metadata")
 _PRODUCTS_ROWS: List[Tuple[Any, ...]] = [
-    (1, "Widget A", "electronics", 29.99, 100, 0),
-    (2, "Widget B", "electronics", 49.99, 0, 0),
-    (3, "Gadget X", "gadgets", 9999.99, 5, 0),
-    (4, "Gadget Y", None, 0.01, None, 1),
-    (5, "Book Alpha", "books", 15.00, 200, 0),
-    (6, "Book Beta", "books", 25.50, 50, 0),
-    (7, "Tool Pro", "tools", 199.99, 10, 0),
-    (8, "Tool Basic", "tools", 79.99, None, 1),
-    (9, "Accessory Z", None, 5.00, 0, 0),
-    (10, "Premium Item", "electronics", 599.99, 3, 0),
-    (11, "Clearance Item", "clearance", 1.00, 999, 1),
-    (12, "Luxury Good", "luxury", 4999.99, 1, 0),
-    (13, "Free Sample", "samples", 0.01, 500, 0),
-    (14, "Bulk Pack", None, 120.00, 0, 0),
-    (15, "Rare Find", "collectibles", 750.00, None, 0),
+    (1, "Widget A", "electronics", 29.99, 100, 0,
+     '{"color": "red", "weight": 0.5}'),
+    (2, "Widget B", "electronics", 49.99, 0, 0,
+     '{"color": "blue", "weight": 0.8}'),
+    (3, "Gadget X", "gadgets", 9999.99, 5, 0,
+     '{"tags": ["new", "sale"], "warranty": 24}'),
+    (4, "Gadget Y", None, 0.01, None, 1,
+     None),
+    (5, "Book Alpha", "books", 15.00, 200, 0,
+     '{"author": "Smith", "pages": 350}'),
+    (6, "Book Beta", "books", 25.50, 50, 0,
+     '{"author": "Jones", "pages": 200}'),
+    (7, "Tool Pro", "tools", 199.99, 10, 0,
+     '{"material": "steel", "warranty": 12}'),
+    (8, "Tool Basic", "tools", 79.99, None, 1,
+     '{}'),
+    (9, "配件Z", None, 5.00, 0, 0,
+     '{"origin": "CN"}'),
+    (10, "Premium Item", "electronics", 599.99, 3, 0,
+     '{"color": "gold", "weight": 1.2}'),
+    (11, "Clearance Item", "clearance", 1.00, 999, 1,
+     None),
+    (12, "Luxury Good", "luxury", 4999.99, 1, 0,
+     '{"material": "platinum", "limited": true}'),
+    (13, "Free Sample", "samples", 0.01, 500, 0,
+     '{}'),
+    (14, "Paquet Économique", None, 120.00, 0, 0,
+     '{"units": 12, "discount": 0.15}'),
+    (15, "Rare Find", "collectibles", 750.00, None, 0,
+     None),
 ]
 
 # ── t_orders ─────────────────────────────────────────
@@ -152,6 +197,10 @@ _TAGS_ROWS: List[Tuple[Any, ...]] = [
     (16, "user", 10, "inactive"),
     (17, "product", 4, "discontinued"),
     (18, "user", 13, "new"),
+    # Unicode 标签（扩展维度）
+    (19, "user", 2, "重要"),
+    (20, "product", 3, "重要"),       # 与 user 重叠，INTERSECT 可命中
+    (21, "user", 4, "café"),          # 拉丁重音标签
 ]
 
 # 所有表的数据集合

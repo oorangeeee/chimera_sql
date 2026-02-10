@@ -1,0 +1,1 @@
+WITH RECURSIVE sub_tree(id, root_id) AS (SELECT id, id AS root_id FROM t_users WHERE manager_id IS NULL UNION ALL SELECT e.id, s.root_id FROM t_users e INNER JOIN sub_tree s ON e.manager_id = s.id) SELECT root_id, COUNT(*) - 1 AS subordinate_count FROM sub_tree GROUP BY root_id ORDER BY root_id

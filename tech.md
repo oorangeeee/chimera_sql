@@ -11,20 +11,22 @@ graph TD
     Input[Seed SQLs] --> Mutator[AST Mutation Engine]
     Mutator -- Mutated AST --> Transpiler[Dialect Transpiler]
     Transpiler -- Target SQL --> Executor[Execution Engine]
-    
+
     subgraph "Connection Layer (Factory Pattern)"
         Executor --> OracleAdapter
         Executor --> SQLiteAdapter
     end
-    
+
     OracleAdapter --> OracleDB[(Oracle XE)]
     SQLiteAdapter --> SQLiteDB[(SQLite)]
-    
+
     OracleDB --> Analyzer[Differential Analyzer]
     SQLiteDB --> Analyzer
-    
+
     Analyzer --> Report[Bug Report]
 ```
+
+**解耦原则**：变异引擎与方言转译器严格解耦。默认编排为“先变异、后转译”，但允许在研发早期仅运行 seeds 的基础回归测试，或将变异与转译分别独立验证。
 
 ## 2. 核心模块设计与设计模式应用
 
