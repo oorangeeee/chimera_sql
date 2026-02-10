@@ -1,0 +1,25 @@
+# ChimeraSQL Configuration Template
+# Copy this file to config.yaml and fill in your actual values:
+#   cp config.template.yaml config.yaml
+
+# Oracle Database
+oracle:
+  host: "localhost"
+  port: 1521
+  service_name: "XEPDB1"
+  user: "your_username"
+  password: "your_password"
+
+# SQLite Database
+sqlite:
+  db_path: "data/test.db"
+
+# Logging
+logging:
+  level: "DEBUG"
+  log_file: "data/logs/chimera.log"
+
+# Fuzzing Parameters
+fuzzing:
+  max_mutations: 100
+  seed_dir: "data/seeds"

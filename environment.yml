@@ -1,0 +1,12 @@
+name: chimera_sql
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - sqlglot
+  - pip
+  - oracledb
+  - pyyaml
+  - pip:
+      - -r requirements.txt
