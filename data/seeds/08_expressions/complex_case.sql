@@ -1,0 +1,1 @@
+SELECT o.id, u.username, p.name, CASE WHEN o.total_price > 1000 THEN 'high' WHEN o.total_price > 100 THEN 'medium' ELSE 'low' END AS order_tier FROM t_orders o INNER JOIN t_users u ON o.user_id = u.id INNER JOIN t_products p ON o.product_id = p.id ORDER BY o.id
