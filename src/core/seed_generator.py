@@ -11,7 +11,6 @@
 5. 不含 RIGHT JOIN（SQLite 3.39.0 前不支持）
 """
 
-import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 

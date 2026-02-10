@@ -7,7 +7,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from src.connector.base import DBConnector
 from src.utils.logger import get_logger
@@ -78,7 +78,13 @@ _PRODUCTS_ROWS: List[Tuple[Any, ...]] = [
 
 # ── t_orders ─────────────────────────────────────────
 _ORDERS_COLS = (
-    "id", "user_id", "product_id", "quantity", "total_price", "order_date", "status",
+    "id",
+    "user_id",
+    "product_id",
+    "quantity",
+    "total_price",
+    "order_date",
+    "status",
 )
 _ORDERS_ROWS: List[Tuple[Any, ...]] = [
     (1, 1, 1, 2, 59.98, _ts("2024-03-01 10:00:00"), "delivered"),
@@ -196,6 +202,4 @@ class DataPopulator:
             # 但使用参数绑定时 oracledb 可以直接接受字符串，无需转换。
             self._connector.execute(sql, row)
 
-        logger.info(
-            "[%s] 表 %s 填充 %d 行", self._db_type, table_name, len(rows)
-        )
+        logger.info("[%s] 表 %s 填充 %d 行", self._db_type, table_name, len(rows))

@@ -10,7 +10,6 @@ from src.connector.factory import ConnectorFactory
 from src.core.data_populator import DataPopulator
 from src.core.schema_initializer import SchemaInitializer
 from src.core.seed_generator import SeedGenerator
-from src.utils.config_loader import ConfigLoader
 from src.utils.logger import get_logger
 
 
@@ -18,7 +17,7 @@ def main():
     logger = get_logger("chimera")
     logger.info("ChimeraSQL starting...")
 
-    config = ConfigLoader()
+    # config = ConfigLoader()
     logger.info("Configuration loaded")
 
     # ── 阶段 1 & 2：对每种数据库执行 Schema 初始化 + 数据填充 ──

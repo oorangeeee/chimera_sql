@@ -11,7 +11,6 @@ _REGISTRY = {
 
 
 class ConnectorFactory:
-
     @staticmethod
     def create(db_type: str) -> DBConnector:
         """根据给定的数据库类型创建连接器实例。
