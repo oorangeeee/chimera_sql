@@ -1,9 +1,9 @@
-"""Logging utilities with console and file output."""
+"""具有控制台和文件输出的日志记录工具。"""
 
 import logging
 from pathlib import Path
 
-# Project root: two levels up from this file (src/utils/ -> project root)
+# 项目根目录：此文件上两级目录（src/utils/ -> 项目根目录）
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _LOG_DIR = _PROJECT_ROOT / "data" / "logs"
 _LOG_FILE = _LOG_DIR / "chimera.log"
@@ -15,7 +15,7 @@ _initialized = False
 
 
 def _init_logging():
-    """Set up root logger with console and file handlers (called once)."""
+    """设置根记录器，包含控制台和文件处理程序（仅调用一次）。"""
     global _initialized
     if _initialized:
         return
@@ -26,13 +26,13 @@ def _init_logging():
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
-    # Console handler — INFO level (progress visibility)
+    # 控制台处理程序 — INFO 级别（进度可见）
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     console.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATE_FORMAT))
     root.addHandler(console)
 
-    # File handler — DEBUG level (full experiment data)
+    # 文件处理程序 — DEBUG 级别（完整实验数据）
     file_handler = logging.FileHandler(_LOG_FILE, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATE_FORMAT))
@@ -40,6 +40,6 @@ def _init_logging():
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Get a named logger. Initializes logging on first call."""
+    """获取一个已命名的日志记录器。首次调用时初始化日志记录。"""
     _init_logging()
     return logging.getLogger(name)
