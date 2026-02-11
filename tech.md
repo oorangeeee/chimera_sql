@@ -194,9 +194,45 @@ SchemaInitializer → DataPopulator → SeedGenerator
 
 **设计约束:** 每条种子带确定性 ORDER BY；避免数据库特有语法；不含 RIGHT JOIN（SQLite 兼容性）。
 
-## 4. 关键技术实现原理
+## 4. 命令行接口与编排层
 
-### 4.1 基于 SQLGlot 的 AST 变异
+采用 **分层 CLI 架构**，遵循 thin main 原则：
+
+```
+main.py              → 薄入口（仅 import + 调用）
+  └── src/cli.py     → argparse 参数解析 + 子命令分发 + 顶层错误处理
+        ├── src/core/init_pipeline.py              → init 三阶段流水线编排
+        └── src/core/transpiler/batch_runner.py    → 批量转译编排
+              └── src/core/transpiler/report.py    → 报告生成
+```
+
+`main.py` 仅包含 `from src.cli import run` 和 `run()` 调用，所有业务逻辑和辅助函数均位于 `src/` 内。验证错误（目录不存在、同方言等）由业务模块抛出 `ValueError`，CLI 层统一捕获并输出日志。
+
+### 4.1 `init` — 初始化测试基础设施
+
+由 `InitPipeline` 类编排，执行三阶段流水线：Schema 初始化 → 数据填充 → 种子 SQL 生成。
+
+```bash
+python main.py init
+```
+
+### 4.2 `transpile` — 批量方言转译
+
+由 `BatchTranspileRunner` 类编排，递归扫描输入目录下所有 `.sql` 文件，通过 `SQLTranspiler` 逐条转译后按相同目录层级写入输出目录，并由 `TranspileReport` 生成 Markdown + JSON 双格式报告。
+
+```bash
+python main.py transpile <输入目录> -s <源方言> -t <目标方言>
+```
+
+**输出目录命名规则:** `result/{时间戳}_{源方言}_{目标方言}/`
+
+**报告内容:** 汇总统计（总数/成功/失败/有警告）、失败详情（错误信息）、全量文件清单（状态 + 应用规则）。
+
+**容错设计:** 单条 SQL 转译失败不中断批量处理，失败的文件写入原始 SQL + 错误注释，报告中记录失败原因。
+
+## 5. 关键技术实现原理
+
+### 5.1 基于 SQLGlot 的 AST 变异
 
 本项目不使用基于文本的正则表达式替换（易产生语法错误），而是操作 SQL 的抽象语法树（AST）。
 
@@ -204,7 +240,7 @@ SchemaInitializer → DataPopulator → SeedGenerator
 - **遍历与修改:** 编写递归函数遍历树节点。例如，定位所有 exp.Literal.number 节点，将其值修改为边界值。
 - **重组:** node.sql() 将修改后的 AST 重新序列化为 SQL 文本。
 
-### 4.2 差分测试与结果归一化
+### 5.2 差分测试与结果归一化
 
 在对比异构数据库（Oracle vs SQLite）的执行结果时，必须处理底层数据类型的差异。Analyzer 模块实现了**结果归一化（Normalization）**算法：
 
@@ -212,7 +248,7 @@ SchemaInitializer → DataPopulator → SeedGenerator
 - **布尔类型:** 将 Oracle 的 0/1 和 SQLite 的 True/False 统一映射为标准布尔值。
 - **空值处理:** 统一处理 NULL (SQL标准) 与空字符串 '' (Oracle 特性) 的差异。
 
-## 5. 数据库通用性接口设计 (The Universality Proof)
+## 6. 数据库通用性接口设计 (The Universality Proof)
 
 虽然本项目使用 Python 开发，但严格遵循了类似于 JDBC 的接口规范，以证明工具的通用性。
 
@@ -238,7 +274,7 @@ class DBConnector(ABC):
 
 任何符合 Python DB-API 2.0 标准的数据库驱动（如 pymysql, psycopg2）均可被适配到此接口中，从而实现对新数据库的支持。
 
-## 6. 部署与环境解耦
+## 7. 部署与环境解耦
 
 - **配置解耦:** 所有环境相关参数（IP、端口、账号）均移出代码，存放于 config.yaml。
 - **服务解耦:** 数据库服务作为外部依赖。开发环境推荐使用 Docker 运行 Oracle XE，应用层通过 TCP/IP 网络连接，不仅降低了本地环境污染，也模拟了真实的远程数据库测试场景。

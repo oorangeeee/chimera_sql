@@ -10,8 +10,11 @@
     - TranspileResult: 转译结果数据类
     - RuleRegistry: 规则注册表
     - create_default_registry: 默认注册表工厂函数
+    - BatchTranspileRunner: 批量转译编排器
+    - BatchTranspileResult: 批量转译运行结果
 """
 
+from .batch_runner import BatchTranspileResult, BatchTranspileRunner
 from .dialect import Dialect
 from .rule_base import TranspilationRule, TranspileResult
 from .rule_registry import RuleRegistry, create_default_registry
@@ -24,4 +27,6 @@ __all__ = [
     "TranspileResult",
     "RuleRegistry",
     "create_default_registry",
+    "BatchTranspileRunner",
+    "BatchTranspileResult",
 ]

@@ -19,9 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.connector.factory import ConnectorFactory
-from src.core.data_populator import DataPopulator
-from src.core.schema_initializer import SchemaInitializer
-from src.core.seed_generator import SeedGenerator
+from src.testbed import DataPopulator, SchemaInitializer, SeedGenerator
 from src.core.transpiler import Dialect, SQLTranspiler
 from src.utils.config_loader import ConfigLoader
 from src.utils.logger import get_logger

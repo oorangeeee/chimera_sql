@@ -36,3 +36,6 @@ dockers/
 /data/*.db
 
 tests/seed_sql_test/result/*
+
+# Transpilation output
+result/

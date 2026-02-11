@@ -196,3 +196,38 @@ Oracle→SQLite（`AddRecursiveKeywordRule`）：
 - `SELECT ... LIMIT 5 OFFSET 2` → `SELECT ... OFFSET 2 ROWS FETCH NEXT 5 ROWS ONLY`
 - `COALESCE(...)` → `COALESCE(...)`（Oracle 12c+ 支持 COALESCE，SQLGlot 保持不变）
 - 反向转译 + 往返测试均通过
+
+## 10. 批量转译功能（transpile 子命令）
+
+### 10.1 功能定位
+
+转译器模块实现了核心算法，但需要一个面向用户的编排层将其串联为可用功能。`BatchTranspileRunner`（位于 `src/core/transpiler/batch_runner.py`）即是这个编排层，负责：
+
+1. 校验输入参数（目录存在性、方言不同等）
+2. 递归扫描输入目录收集所有 `.sql` 文件
+3. 逐条调用 `SQLTranspiler.transpile()` 执行转译
+4. 按原始目录层级写入转译结果
+5. 调用 `TranspileReport` 生成 Markdown + JSON 双格式报告
+
+CLI 层（`src/cli.py`）负责参数解析与分发，调用 `BatchTranspileRunner().run()` 并输出汇总日志。
+
+### 10.2 输出目录设计
+
+输出目录命名为 `result/{时间戳}_{源方言}_{目标方言}/`，例如 `result/20260211_201214_sqlite_oracle/`。
+
+设计考量：
+- 时间戳前缀保证每次运行不覆盖历史结果，便于对比
+- 方言对标识转译方向，一目了然
+- 保持与输入目录相同的子目录结构，便于对照原始 SQL
+
+### 10.3 报告设计
+
+每次转译生成两份报告：
+- `report.md`: 人类可读的 Markdown 格式，包含汇总表格、失败详情、警告详情、全量文件清单
+- `report.json`: 机器可读的 JSON 格式，包含完整结构化数据，可供后续流水线消费
+
+### 10.4 容错策略
+
+- 单条 SQL 转译失败不中断批量处理
+- 失败的文件仍然写入输出目录（内容为错误注释 + 原始 SQL），保持文件数量一致
+- 报告中详细记录每条失败的原因
