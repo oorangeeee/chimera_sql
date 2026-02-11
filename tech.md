@@ -59,6 +59,34 @@ graph TD
   - LogicTautologyStrategy: 注入 OR 1=1 等恒真条件。
 - MutatorContext 类负责接收种子 AST，并随机组合应用上述策略。
 
+#### 2.2.1 变异规则定制化（DBMS + 版本）最佳实践
+
+结合 SQLancer、SQLsmith、sqllogictest、SQLRight 的工程实践，变异规则不应是“一套通用策略”，而应是“能力画像驱动”的分层体系：
+
+1. 通用规则层（Generic）
+- 跨库可复用的语义扰动，如边界值、谓词变形、表达式替换。
+
+2. DBMS 定制层（Dialect-Specific）
+- 按数据库能力启停函数/语法相关规则（JSON、递归 CTE、集合操作等）。
+- 仅生成目标库高概率可执行且可比较的变异 SQL。
+
+3. 版本定制层（Version-Gated）
+- 按版本开关特性规则，避免旧版本不支持语法导致无效样例激增。
+- 维护 expected-errors，防止将已知版本差异误判为缺陷。
+
+建议引入 capability profile：
+- `dbms`
+- `version_range`
+- `features`
+- `expected_errors`
+- `known_differences`
+
+变异调度流程：
+- 规则候选 -> `can_apply(rule, profile)` 门控 -> 执行变异 -> 执行反馈分类（bug/expected/invalid）-> 回灌高价值样例。
+
+该方案可显著降低误报并提高有效样例密度，符合跨数据库差分测试场景的最佳实践。
+完整调研证据与来源链接见 `info/mutation_customization_research.md`。
+
 ### 2.3 方言转译器 (Dialect Transpiler)
 
 **设计模式:** 策略模式 (Strategy Pattern) + 规则引擎 (Rule Engine)

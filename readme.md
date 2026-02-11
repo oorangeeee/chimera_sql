@@ -126,24 +126,21 @@ ChimeraSQL/
 ├── src/
 │   ├── cli.py                  # CLI 参数解析 + 子命令分发 + 顶层错误处理
 │   ├── connector/              # 数据库连接层 (工厂模式实现)
-│   ├── core/                   # 核心逻辑
-│   │   ├── init_pipeline.py       # init 三阶段流水线编排
-│   │   ├── schema_initializer.py  # 测试表 DDL 初始化（5 张表）
-│   │   ├── data_populator.py      # 测试数据填充（含边界值/NULL）
-│   │   ├── seed_generator.py      # 种子 SQL 文件生成
+│   ├── core/                   # 核心逻辑（仅变异/转译/差分）
 │   │   ├── mutator/            # AST 变异策略 (策略模式实现)
-│   │   └── transpiler/         # 方言转译器 (规则引擎实现)
-│   │       ├── batch_runner.py    # 批量转译编排（文件收集/转译/写入）
-│   │       ├── report.py          # Markdown + JSON 报告生成
-│   │       ├── dialect.py         # Dialect 枚举
-│   │       ├── rule_base.py       # TranspilationRule ABC + TranspileResult
-│   │       ├── rule_registry.py   # 规则注册表 + 默认规则工厂
-│   │       ├── transpiler.py      # SQLTranspiler 编排器
-│   │       └── rules/             # 具体转译规则
-│   │           ├── json_rules.py      # json_extract ↔ JSON_VALUE
-│   │           ├── recursive_rules.py # WITH RECURSIVE 处理
-│   │           └── set_op_rules.py    # EXCEPT ↔ MINUS（可选）
-│   ├── analyzer/               # 结果对比与分析
+│   │   ├── transpiler/         # 方言转译器 (规则引擎实现)
+│   │   │   ├── batch_runner.py    # 批量转译编排（文件收集/转译/写入）
+│   │   │   ├── report.py          # Markdown + JSON 报告生成
+│   │   │   ├── dialect.py         # Dialect 枚举
+│   │   │   ├── rule_base.py       # TranspilationRule ABC + TranspileResult
+│   │   │   ├── rule_registry.py   # 规则注册表 + 默认规则工厂
+│   │   │   ├── transpiler.py      # SQLTranspiler 编排器
+│   │   │   └── rules/             # 具体转译规则
+│   │   │       ├── json_rules.py      # json_extract ↔ JSON_VALUE
+│   │   │       ├── recursive_rules.py # WITH RECURSIVE 处理
+│   │   │       └── set_op_rules.py    # EXCEPT ↔ MINUS（可选）
+│   │   └── differential/       # 差分分析与结果归一化
+│   ├── testbed/                # 测试基建（schema/data/seed/pipeline）
 │   └── utils/                  # 工具类 (ConfigLoader, Logger)
 ├── result/                     # 转译输出（自动生成，已 gitignore）
 ├── tests/                      # 单元测试
