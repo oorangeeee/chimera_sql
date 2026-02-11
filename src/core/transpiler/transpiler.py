@@ -10,7 +10,7 @@ import sqlglot
 from sqlglot.errors import ErrorLevel
 
 from .dialect import Dialect
-from .rule_base import TranspilationRule, TranspileResult
+from .rule_base import TranspileResult
 from .rule_registry import RuleRegistry, create_default_registry
 from .rules.set_op_rules import ExceptToMinusRule
 
@@ -37,9 +37,7 @@ class SQLTranspiler:
         """获取当前使用的规则注册表。"""
         return self._registry
 
-    def transpile(
-        self, sql: str, source: Dialect, target: Dialect
-    ) -> TranspileResult:
+    def transpile(self, sql: str, source: Dialect, target: Dialect) -> TranspileResult:
         """将单条 SQL 从源方言转译为目标方言。
 
         Args:
@@ -66,6 +64,9 @@ class SQLTranspiler:
             )
 
         # 阶段1：解析源 SQL 为 AST
+        # - sql: 原始 SQL 字符串（已 strip）
+        # - read=source.value: 指定“源方言”，确保按对应语法解析
+        # - error_level=ErrorLevel.RAISE: 解析失败直接抛异常，便于上层感知非法 SQL
         tree = sqlglot.parse_one(sql, read=source.value, error_level=ErrorLevel.RAISE)
 
         # 阶段2：按规则链依次变换 AST

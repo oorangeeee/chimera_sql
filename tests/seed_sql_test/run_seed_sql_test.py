@@ -161,7 +161,10 @@ def run() -> Path:
                 except Exception as e:
                     logger.warning(
                         "%s 执行失败 [%s]: %s | SQL: %s",
-                        sql_name, db_type, e, exec_sql[:200],
+                        sql_name,
+                        db_type,
+                        e,
+                        exec_sql[:200],
                     )
                     entry["databases"][db_type] = {
                         "status": "error",
@@ -184,12 +187,16 @@ def run() -> Path:
             1 for r in results if r["databases"].get(db_type, {}).get("status") == "ok"
         )
         err_count = sum(
-            1 for r in results
+            1
+            for r in results
             if r["databases"].get(db_type, {}).get("status") == "error"
         )
         logger.info(
             "[%s] 执行结果: %d 成功, %d 失败, 共 %d 条",
-            db_type, ok_count, err_count, len(results),
+            db_type,
+            ok_count,
+            err_count,
+            len(results),
         )
 
     # ── 写入结果文件 ──
