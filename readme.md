@@ -108,23 +108,18 @@ result/
 
 ```text
 ChimeraSQL/
-├── config/                     # 配置文件 (config.yaml)
+├── config/
+│   ├── config.template.yaml    # 配置模板（提交到仓库）
+│   └── config.yaml             # 本地配置（通常不提交）
 ├── data/
 │   ├── seeds/                  # 种子 SQL（按类别分子目录，共 11 类 70 条）
-│   │   ├── 01_basic_select/
-│   │   ├── 02_aggregation/
-│   │   ├── 03_join/
-│   │   ├── 04_subquery/
-│   │   ├── 05_set_operations/
-│   │   ├── 06_window_functions/
-│   │   ├── 07_null_handling/
-│   │   ├── 08_expressions/
-│   │   ├── 09_recursive_self_join/
-│   │   ├── 10_string_collation/
-│   │   └── 11_json_handling/
-│   └── logs/                   # 运行日志
+│   ├── logs/                   # 运行日志
+├── dockers/
+│   └── oracle-docker-compose.yml
+├── info/                       # 设计说明与调研文档
 ├── src/
 │   ├── cli.py                  # CLI 参数解析 + 子命令分发 + 顶层错误处理
+│   ├── analyzer/               # 分析模块（预留）
 │   ├── connector/              # 数据库连接层 (工厂模式实现)
 │   ├── core/                   # 核心逻辑（仅变异/转译/差分）
 │   │   ├── mutator/            # AST 变异策略 (策略模式实现)
@@ -143,8 +138,8 @@ ChimeraSQL/
 │   ├── testbed/                # 测试基建（schema/data/seed/pipeline）
 │   └── utils/                  # 工具类 (ConfigLoader, Logger)
 ├── result/                     # 转译输出（自动生成，已 gitignore）
-├── tests/                      # 单元测试
-├── docker-compose.yml          # 数据库环境部署
+├── tests/                      # 测试脚本
+├── tech.md                     # 技术方案文档
 ├── requirements.txt            # 依赖列表
 └── main.py                     # 薄入口（仅调用 src.cli.run()）
 ```
