@@ -59,7 +59,65 @@ graph TD
   - LogicTautologyStrategy: 注入 OR 1=1 等恒真条件。
 - MutatorContext 类负责接收种子 AST，并随机组合应用上述策略。
 
-### 2.3 配置管理 (Configuration)
+### 2.3 方言转译器 (Dialect Transpiler)
+
+**设计模式:** 策略模式 (Strategy Pattern) + 规则引擎 (Rule Engine)
+
+**设计目的:** 将任意合法 SQL 从源数据库方言转换为目标数据库方言，补充 SQLGlot 未覆盖的方言差异。
+
+**两阶段转译管线:**
+
+```
+输入 SQL (字符串)
+    │
+    ▼
+sqlglot.parse_one(sql, read=source_dialect)     ← 阶段1: AST 解析
+    │
+    ▼
+[AST 树]
+    │
+    ▼
+rule_1.apply(tree) → rule_2.apply(tree) → ...   ← 阶段2: 规则链变换
+    │
+    ▼
+[变换后 AST]
+    │
+    ▼
+tree.sql(dialect=target_dialect)                 ← 阶段3: 目标方言生成
+    │
+    ▼
+输出 SQL (字符串)
+```
+
+**实现细节:**
+
+- **TranspilationRule (ABC)**: 规则策略接口，定义 `name`/`description`/`apply(tree)` 契约。
+- **具体规则实现:**
+  - `JsonExtractToJsonValueRule`: `json_extract()` → `JSON_VALUE()`（SQLite→Oracle）
+  - `JsonValueToJsonExtractRule`: `JSON_VALUE()` → `json_extract()`（Oracle→SQLite）
+  - `RemoveRecursiveKeywordRule`: 移除 `WITH RECURSIVE` 的 `RECURSIVE` 关键字（SQLite→Oracle）
+  - `AddRecursiveKeywordRule`: 通过启发式检测（UNION ALL + 自引用）为递归 CTE 添加 `RECURSIVE`（Oracle→SQLite）
+  - `ExceptToMinusRule` / `MinusToExceptRule`: EXCEPT↔MINUS 转换（可选，默认不启用，Oracle 21c 已支持 EXCEPT）
+- **RuleRegistry**: 按 `(source_dialect, target_dialect)` 方向管理有序规则链，支持动态注册。
+- **SQLTranspiler**: 编排器，协调解析→规则链→生成的完整流程；提供 `transpile()` 和 `transpile_batch()` 接口。
+
+**SQLGlot 原生处理 vs 自定义规则补充:**
+
+| 方言差异 | SQLGlot 原生 | 自定义规则 |
+|----------|:---:|:---:|
+| LIMIT/OFFSET → FETCH FIRST (Oracle) | ✅ | — |
+| COALESCE ↔ NVL | ✅ | — |
+| UPPER/LOWER/LENGTH/SUBSTR | ✅ | — |
+| json_extract() → JSON_VALUE() | ❌ | ✅ |
+| WITH RECURSIVE → WITH | ❌ | ✅ |
+| EXCEPT ↔ MINUS | 部分 | 可选 |
+
+**容错设计（面向模糊测试场景）:**
+
+- 单条规则执行异常不中断转译流程，记录警告信息继续执行后续规则。
+- 批量转译时单条失败返回原 SQL 并附带警告，不影响其他 SQL 的转译。
+
+### 2.4 配置管理 (Configuration)
 
 **设计模式:** 单例模式 (Singleton Pattern)
 
@@ -130,6 +188,9 @@ SchemaInitializer → DataPopulator → SeedGenerator
 | `06_window_functions` | 6 | ROW_NUMBER/RANK/DENSE_RANK/SUM OVER/AVG OVER |
 | `07_null_handling` | 6 | IS NULL/IS NOT NULL/COALESCE/聚合中NULL |
 | `08_expressions` | 7 | 算术/CASE/CAST/嵌套表达式 |
+| `09_recursive_self_join` | 6 | WITH RECURSIVE/自连接/层级遍历 |
+| `10_string_collation` | 6 | UPPER/LOWER/LENGTH/LIKE/TRIM/SUBSTR (Unicode) |
+| `11_json_handling` | 6 | json_extract/NULL处理/聚合中JSON |
 
 **设计约束:** 每条种子带确定性 ORDER BY；避免数据库特有语法；不含 RIGHT JOIN（SQLite 兼容性）。
 
