@@ -46,46 +46,89 @@ graph TD
 
 ### 2.2 变异引擎 (Mutation Engine)
 
-**设计模式:** 策略模式 (Strategy Pattern)
+**设计模式:** 策略模式 (Strategy Pattern) + 能力画像驱动门控
 
-**设计目的:** 允许灵活插拔不同的模糊测试攻击策略，而无需修改核心调度逻辑。
+**设计目的:** 允许灵活插拔不同的模糊测试变异策略，且新增数据库支持时仅需编写 YAML 配置文件，无需修改变异逻辑代码。
 
-**实现细节:**
+**泛用性架构:**
 
-- 定义 MutationStrategy 接口。
-- 具体策略实现：
-  - BoundaryInjectionStrategy: 数值边界值（INT_MAX, -1, 0）注入。
-  - NullPointerStrategy: 随机将字段替换为 NULL。
-  - LogicTautologyStrategy: 注入 OR 1=1 等恒真条件。
-- MutatorContext 类负责接收种子 AST，并随机组合应用上述策略。
+变异引擎与目标数据库严格解耦。核心思路是"变异策略声明所需能力，调度器查询画像决定是否启用"：
 
-#### 2.2.1 变异规则定制化（DBMS + 版本）最佳实践
+```
+变异策略池（共享）         能力画像（per-DB）         门控调度器
+┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
+│ boundary_inj │     │ SQLGlot 自动提取 │     │ can_apply()  │
+│ null_inject  │────▶│ + YAML 手工覆盖  │────▶│ 能力 ⊇ 需求? │──▶ 生效策略
+│ window_frame │     │ 150+ bool flags  │     │ 随机采样     │
+│ ...          │     │ 32 种方言        │     └──────────────┘
+└──────────────┘     └──────────────────┘
+```
 
-结合 SQLancer、SQLsmith、sqllogictest、SQLRight 的工程实践，变异规则不应是“一套通用策略”，而应是“能力画像驱动”的分层体系：
+**实现架构:**
 
-1. 通用规则层（Generic）
-- 跨库可复用的语义扰动，如边界值、谓词变形、表达式替换。
+```
+src/core/mutator/
+├── strategy_base.py          # MutationStrategy ABC + MutationResult
+├── capability.py             # CapabilityProfile（SQLGlot 提取 + YAML 覆盖）
+├── gate.py                   # RuleGate.can_apply() 门控
+├── engine.py                 # MutationEngine 单条 SQL 变异编排
+├── strategy_registry.py      # StrategyRegistry + create_default_registry()
+├── batch_runner.py           # BatchMutationRunner 批量编排
+├── report.py                 # MutationReport 报告生成
+└── strategies/               # 10 个通用变异策略
+```
 
-2. DBMS 定制层（Dialect-Specific）
-- 按数据库能力启停函数/语法相关规则（JSON、递归 CTE、集合操作等）。
-- 仅生成目标库高概率可执行且可比较的变异 SQL。
+**单条 SQL 变异流程（MutationEngine.mutate_one）:**
 
-3. 版本定制层（Version-Gated）
-- 按版本开关特性规则，避免旧版本不支持语法导致无效样例激增。
-- 维护 expected-errors，防止将已知版本差异误判为缺陷。
+1. `sqlglot.parse_one(sql)` 解析为 AST
+2. `tree.walk()` 遍历收集所有 AST 节点
+3. 对每个 (策略, 节点) 组合调用 `RuleGate.can_apply()` 门控过滤
+4. 从通过门控的候选中随机选取 1~3 个变异操作
+5. 依次调用 `strategy.mutate(node, rng)` 执行变异，通过 `node.replace()` 在 AST 中原地替换
+6. `tree.sql()` 序列化为变异后的 SQL
+7. 健全性检查：`sqlglot.parse_one(result_sql)` 验证语法合法性
 
-建议引入 capability profile：
-- `dbms`
-- `version_range`
-- `features`
-- `expected_errors`
-- `known_differences`
+**能力画像分层（Capability Profile）:**
 
-变异调度流程：
-- 规则候选 -> `can_apply(rule, profile)` 门控 -> 执行变异 -> 执行反馈分类（bug/expected/invalid）-> 回灌高价值样例。
+1. **自动提取层（SQLGlot）**: SQLGlot 在 Dialect/Generator/Parser 三个层级维护了 150+ 个布尔能力标志，覆盖 32 种方言。`CapabilityProfile.from_sqlglot()` 程序化提取这些标志作为能力画像基线。
+2. **手工覆盖层（YAML）**: `CapabilityProfile.from_dialect_version()` 自动合并 `config.yaml` 中匹配的 profile，补充 SQLGlot 未编码的能力（版本门控、features 等）。
 
-该方案可显著降低误报并提高有效样例密度，符合跨数据库差分测试场景的最佳实践。
-完整调研证据与来源链接见 `info/mutation_customization_research.md`。
+合并规则：手工覆盖 > 自动提取 > 默认值。
+
+**已实现的 10 个通用变异策略（Generic，所有方言可用）:**
+
+| 策略 ID | 目标节点 | 变异行为 |
+|---------|---------|---------|
+| `boundary_injection` | Literal（数字） | 替换为边界值（0/-1/MAX_INT 等，从 config.yaml 读取） |
+| `null_injection` | Column, Literal | 替换为 NULL |
+| `predicate_negation` | EQ/NEQ/GT/GTE/LT/LTE | 比较运算符取反（= ↔ <>, > ↔ <= 等） |
+| `logic_tautology` | Where, Having | 注入 OR 1=1（恒真）或 AND 1=0（恒假） |
+| `operand_swap` | EQ/GT/LT/Add/Mul | 交换左右操作数 |
+| `aggregate_substitution` | Count/Sum/Avg/Min/Max | 聚合函数互换 |
+| `sort_direction_flip` | Ordered | ASC ↔ DESC |
+| `distinct_toggle` | Select | 切换 DISTINCT |
+| `limit_variation` | Limit, Offset | 修改数值（乘 2、设为 0/1 等） |
+| `union_type_variation` | Union | UNION ↔ UNION ALL |
+
+**变异策略分类体系（规划）:**
+
+| 类别 | 说明 | 门控 | 状态 |
+|------|------|------|------|
+| Generic（通用） | 边界值注入、NULL 注入、谓词取反等 | 无（全库可用） | **已实现（10 个）** |
+| Structural（结构） | 子查询包装、JOIN 类型切换、CTE 提取 | 节点类型匹配 | 规划中 |
+| Dialect-Aware（方言感知） | DECODE/MEDIAN/NVL2 注入、EXCEPT ALL | 能力画像标志 | 规划中 |
+| Differential（差分专项） | 空字符串/NULL 探测、整数除法探测 | 针对已知跨库差异 | 规划中 |
+
+**新增数据库工作量:**
+
+| 场景 | 所需工作 |
+|------|---------|
+| SQLGlot 已支持方言 + 已有 Python driver | **零代码** — 自动提取画像即可运行 |
+| 需补充版本特性或 expected errors | **仅 YAML** — 约 30 行覆盖配置 |
+| 全新数据库 | 1 个 YAML 画像 + 1 个 connector 类（~50 行） |
+
+完整调研证据、业界工具对比及策略清单见 `info/mutation_engine_architecture.md`。
+配置模型详细设计（Profile + Policy + Campaign）见 `info/mutation_capability_policy_design.md`。
 
 ### 2.3 方言转译器 (Dialect Transpiler)
 
@@ -230,11 +273,13 @@ SchemaInitializer → DataPopulator → SeedGenerator
 main.py              → 薄入口（仅 import + 调用）
   └── src/cli.py     → argparse 参数解析 + 子命令分发 + 顶层错误处理
         ├── src/core/init_pipeline.py              → init 三阶段流水线编排
+        ├── src/core/mutator/batch_runner.py       → 批量变异编排
+        │     └── src/core/mutator/report.py       → 变异报告生成
         └── src/core/transpiler/batch_runner.py    → 批量转译编排
-              └── src/core/transpiler/report.py    → 报告生成
+              └── src/core/transpiler/report.py    → 转译报告生成
 ```
 
-`main.py` 仅包含 `from src.cli import run` 和 `run()` 调用，所有业务逻辑和辅助函数均位于 `src/` 内。验证错误（目录不存在、同方言等）由业务模块抛出 `ValueError`，CLI 层统一捕获并输出日志。
+`main.py` 仅包含 `from src.cli import run` 和 `run()` 调用，所有业务逻辑和辅助函数均位于 `src/` 内。验证错误（目录不存在、不支持的方言等）由业务模块抛出 `ValueError`，CLI 层统一捕获并输出日志。
 
 ### 4.1 `init` — 初始化测试基础设施
 
@@ -244,7 +289,25 @@ main.py              → 薄入口（仅 import + 调用）
 python main.py init
 ```
 
-### 4.2 `transpile` — 批量方言转译
+### 4.2 `mutate` — 批量 AST 变异
+
+由 `BatchMutationRunner` 类编排，递归扫描输入目录下所有 `.sql` 种子文件，构建目标方言的能力画像，通过 `MutationEngine` 逐条生成多个变异版本，按原目录层级写入输出目录，并由 `MutationReport` 生成 Markdown + JSON 双格式报告。
+
+```bash
+python main.py mutate <输入目录> -d <方言> [-v <版本>] [-n <数量>] [--seed <随机种子>]
+```
+
+**变异数量优先级:** CLI `-n` 参数 > `config.yaml` 中 `mutation.policies.balanced_default.max_mutations_per_seed` > 默认值 3。
+
+**输出目录命名规则:** `result/mutate_{时间戳}_{方言}/`
+
+**输出文件命名规则:** `{原文件名去掉.sql}_mut{序号:02d}.sql`
+
+**报告内容:** 汇总统计（种子数/变异数/失败数）、失败详情、各种子文件的变异统计与应用策略清单。
+
+**容错设计:** 单条 SQL 变异失败不中断批量处理；变异后自动进行语法合法性校验（`sqlglot.parse_one`），去重跳过与原始 SQL 相同的变异结果。
+
+### 4.3 `transpile` — 批量方言转译
 
 由 `BatchTranspileRunner` 类编排，递归扫描输入目录下所有 `.sql` 文件，通过 `SQLTranspiler` 逐条转译后按相同目录层级写入输出目录，并由 `TranspileReport` 生成 Markdown + JSON 双格式报告。
 

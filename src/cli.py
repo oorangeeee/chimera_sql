@@ -10,6 +10,8 @@ from typing import Optional, Sequence
 
 from src.testbed import InitPipeline
 from src.core.transpiler import BatchTranspileRunner, Dialect
+from src.core.mutator import BatchMutationRunner
+from src.utils.config_loader import ConfigLoader
 from src.utils.logger import get_logger
 
 logger = get_logger("chimera")
@@ -56,6 +58,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="目标 SQL 方言",
     )
 
+    # mutate 子命令
+    mt = subparsers.add_parser(
+        "mutate",
+        help="批量 AST 变异",
+    )
+    mt.add_argument(
+        "input_dir",
+        help="包含 .sql 种子文件的输入目录（递归扫描）",
+    )
+    mt.add_argument(
+        "-d",
+        "--dialect",
+        required=True,
+        help="目标数据库方言（如 sqlite, oracle, mysql）",
+    )
+    mt.add_argument(
+        "-v",
+        "--version",
+        default=None,
+        help="数据库版本（可选，如 21c）",
+    )
+    mt.add_argument(
+        "-n",
+        "--count",
+        type=int,
+        default=None,
+        help="每条种子生成的变异数量（默认从 config.yaml 读取）",
+    )
+    mt.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="随机种子（用于可复现结果）",
+    )
+
     return parser
 
 
@@ -84,6 +121,41 @@ def _handle_transpile(args: argparse.Namespace) -> None:
     logger.info("转译报告: %s", result.report_path)
 
 
+def _handle_mutate(args: argparse.Namespace) -> None:
+    """处理 mutate 子命令。"""
+    input_dir = Path(args.input_dir)
+    dialect = args.dialect
+    version = args.version
+
+    # 确定每条种子的变异数量：CLI 参数 > config.yaml > 默认值 3
+    count = args.count
+    if count is None:
+        try:
+            config = ConfigLoader()
+            count = config.get("mutation.policies.balanced_default.max_mutations_per_seed", 3)
+        except FileNotFoundError:
+            count = 3
+
+    result = BatchMutationRunner().run(
+        input_dir=input_dir,
+        dialect=dialect,
+        version=version,
+        count_per_seed=count,
+        random_seed=args.seed,
+    )
+
+    logger.info("=" * 50)
+    logger.info(
+        "变异完成: %d 种子, %d 变异生成, %d 失败 | 耗时 %.0f ms",
+        result.total_seeds,
+        result.total_generated,
+        result.failed_seeds,
+        result.elapsed_ms,
+    )
+    logger.info("输出目录: %s", result.output_dir)
+    logger.info("变异报告: %s", result.report_path)
+
+
 def run(argv: Optional[Sequence[str]] = None) -> None:
     """CLI 公开入口：解析参数 → 分发 → 捕获异常。"""
     parser = _build_parser()
@@ -96,6 +168,7 @@ def run(argv: Optional[Sequence[str]] = None) -> None:
     dispatch = {
         "init": _handle_init,
         "transpile": _handle_transpile,
+        "mutate": _handle_mutate,
     }
 
     try:
