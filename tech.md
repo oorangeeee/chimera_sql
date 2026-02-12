@@ -11,6 +11,7 @@ graph TD
     Input[Seed SQLs] --> Mutator[AST Mutation Engine]
     Mutator -- Mutated AST --> Transpiler[Dialect Transpiler]
     Transpiler -- Target SQL --> Executor[Execution Engine]
+    Executor --> Report[Run Report]
 
     subgraph "Connection Layer (Factory Pattern)"
         Executor --> OracleAdapter
@@ -19,11 +20,6 @@ graph TD
 
     OracleAdapter --> OracleDB[(Oracle XE)]
     SQLiteAdapter --> SQLiteDB[(SQLite)]
-
-    OracleDB --> Analyzer[Differential Analyzer]
-    SQLiteDB --> Analyzer
-
-    Analyzer --> Report[Bug Report]
 ```
 
 **解耦原则**：变异引擎与方言转译器严格解耦。默认编排为“先变异、后转译”，但允许在研发早期仅运行 seeds 的基础回归测试，或将变异与转译分别独立验证。
@@ -117,7 +113,6 @@ src/core/mutator/
 | Generic（通用） | 边界值注入、NULL 注入、谓词取反等 | 无（全库可用） | **已实现（10 个）** |
 | Structural（结构） | 子查询包装、JOIN 类型切换、CTE 提取 | 节点类型匹配 | 规划中 |
 | Dialect-Aware（方言感知） | DECODE/MEDIAN/NVL2 注入、EXCEPT ALL | 能力画像标志 | 规划中 |
-| Differential（差分专项） | 空字符串/NULL 探测、整数除法探测 | 针对已知跨库差异 | 规划中 |
 
 **新增数据库工作量:**
 
@@ -127,8 +122,8 @@ src/core/mutator/
 | 需补充版本特性或 expected errors | **仅 YAML** — 约 30 行覆盖配置 |
 | 全新数据库 | 1 个 YAML 画像 + 1 个 connector 类（~50 行） |
 
-完整调研证据、业界工具对比及策略清单见 `info/mutation_engine_architecture.md`。
-配置模型详细设计（Profile + Policy + Campaign）见 `info/mutation_capability_policy_design.md`。
+完整调研证据、业界工具对比及策略清单见 `core.md`。
+配置模型详细设计（Profile + Policy + Campaign）见 `core.md`。
 
 ### 2.3 方言转译器 (Dialect Transpiler)
 
@@ -188,7 +183,87 @@ tree.sql(dialect=target_dialect)                 ← 阶段3: 目标方言生成
 - 单条规则执行异常不中断转译流程，记录警告信息继续执行后续规则。
 - 批量转译时单条失败返回原 SQL 并附带警告，不影响其他 SQL 的转译。
 
-### 2.4 配置管理 (Configuration)
+### 2.4 流水线编排器 (Pipeline Orchestrator)
+
+**设计模式:** 门面模式 (Facade Pattern) + 编排器模式 (Orchestrator)
+
+**设计目的:** 将变异引擎、方言转译器、数据库连接器三大组件串联为端到端流水线，用户一条命令即可完成"种子 SQL → AST 变异 → 方言转译 → 多数据库执行 → 生成报告"。
+
+**实现架构:**
+
+```
+src/pipeline/
+├── target.py          # TargetDatabase 定义 + 从 config.yaml 加载
+├── executor.py        # TargetExecutor 单目标 SQL 执行器
+├── runner.py          # CampaignRunner 流水线编排器（核心）
+└── report.py          # CampaignReport 总报告生成
+```
+
+**核心流程（CampaignRunner.run）:**
+
+```
+1. 校验输入目录、收集 .sql 种子文件
+2. 从 config.yaml targets 节加载目标数据库列表
+3. 映射源方言到 Dialect 枚举
+4. 构建输出根目录 result/run_{timestamp}/
+
+5. FOR EACH target:
+   5a. 构建 CapabilityProfile.from_dialect_version(target.dialect, target.version)
+   5b. 构建 MutationEngine(profile, registry, rng)
+   5c. 构建 SQLTranspiler()
+   5d. 尝试 TargetExecutor(target).connect()
+       → 连接失败则标记 skipped，跳过该目标
+
+   5e. FOR EACH seed SQL:
+       - engine.mutate_many(sql, seed_file, count) → List[MutationResult]
+       - FOR EACH mutation:
+           · transpiler.transpile(mutation.sql, source, target_dialect)
+           · 写入变异后 SQL 到 output/{target_name}/{relative}_mut{N}.sql
+           · executor.execute_one(transpiled_sql, metadata)
+           · 收集 SQLExecutionResult
+
+   5f. 写入 execution.json（该目标全部执行记录）
+   5g. executor.close()
+
+6. 生成总报告 report.md + report.json
+7. 返回 CampaignResult
+```
+
+**容错设计:**
+
+- 目标数据库连接失败时自动跳过该目标，不中断其他目标的处理。
+- 单条 SQL 变异失败时跳过该种子，不影响后续种子。
+- 转译失败时使用变异后的原始 SQL（带警告标记），继续执行。
+- 单条 SQL 执行失败记录错误信息，不中断批处理。
+
+**目标数据库配置（config.yaml targets 节）:**
+
+```yaml
+targets:
+  oracle_xe:
+    db_type: "oracle"      # ConnectorFactory.create() 的参数
+    dialect: "oracle"      # 用于转译和变异能力画像
+    version: "21c"         # 用于能力画像版本匹配
+  sqlite_local:
+    db_type: "sqlite"
+    dialect: "sqlite"
+    version: ""
+```
+
+**输出目录结构:**
+
+```
+result/run_{timestamp}/
+├── {target_name}/
+│   ├── {seed_category}/
+│   │   ├── {seed}_mut01.sql     # 已转译、可直接执行的 SQL
+│   │   └── ...
+│   └── execution.json           # 该目标全部 SQL 执行结果
+├── report.md                    # 总体报告（人类可读）
+└── report.json                  # 总体报告（机器可读）
+```
+
+### 2.5 配置管理 (Configuration)
 
 **设计模式:** 单例模式 (Singleton Pattern)
 
@@ -240,7 +315,7 @@ SchemaInitializer → DataPopulator → SeedGenerator
 **数据设计原则（参考 SQLancer 低行数策略）:**
 
 - 每表 15–20 行，避免笛卡尔积超时
-- 覆盖：正常值、NULL、边界值（0, -1, MAX）、空字符串（Oracle 视 `''` 为 NULL 的差分测试关键点）、负数
+- 覆盖：正常值、NULL、边界值（0, -1, MAX）、空字符串、负数
 - 占位符映射：Oracle 使用 `:1, :2, ...`，SQLite 使用 `?, ?, ...`
 
 ### 3.3 SeedGenerator（种子生成器）
@@ -275,8 +350,11 @@ main.py              → 薄入口（仅 import + 调用）
         ├── src/core/init_pipeline.py              → init 三阶段流水线编排
         ├── src/core/mutator/batch_runner.py       → 批量变异编排
         │     └── src/core/mutator/report.py       → 变异报告生成
-        └── src/core/transpiler/batch_runner.py    → 批量转译编排
-              └── src/core/transpiler/report.py    → 转译报告生成
+        ├── src/core/transpiler/batch_runner.py    → 批量转译编排
+        │     └── src/core/transpiler/report.py    → 转译报告生成
+        └── src/pipeline/runner.py                 → 端到端流水线编排
+              ├── src/pipeline/executor.py          → 单目标执行器
+              └── src/pipeline/report.py            → 运行报告生成
 ```
 
 `main.py` 仅包含 `from src.cli import run` 和 `run()` 调用，所有业务逻辑和辅助函数均位于 `src/` 内。验证错误（目录不存在、不支持的方言等）由业务模块抛出 `ValueError`，CLI 层统一捕获并输出日志。
@@ -321,6 +399,33 @@ python main.py transpile <输入目录> -s <源方言> -t <目标方言>
 
 **容错设计:** 单条 SQL 转译失败不中断批量处理，失败的文件写入原始 SQL + 错误注释，报告中记录失败原因。
 
+### 4.4 `run` — 端到端模糊测试流水线
+
+由 `CampaignRunner` 类编排，串联变异引擎、方言转译器、数据库连接器，实现完整的端到端模糊测试流程：读取种子 SQL → AST 变异 → 方言转译 → 多数据库执行 → 生成运行报告。
+
+```bash
+python main.py run <输入目录> -s <源方言> [--targets t1,t2] [-n <数量>] [--seed <随机种子>]
+```
+
+**参数说明:**
+
+| 参数 | 必需 | 说明 |
+|------|------|------|
+| `<输入目录>` | 是 | 包含 .sql 种子文件的目录 |
+| `-s / --source` | 是 | 种子 SQL 的方言 |
+| `--targets` | 否 | 逗号分隔的目标名称（默认 config 中所有 targets） |
+| `-n / --count` | 否 | 每条种子变异数量（CLI > config > 3） |
+| `--seed` | 否 | 随机种子 |
+
+**输出目录命名规则:** `result/run_{时间戳}/`
+
+**报告内容:**
+- **report.md**: 运行概览（源方言、目标列表、种子数、变异数）→ 各目标汇总表格（成功/失败/跳过）→ 错误 Top-10
+- **report.json**: 完整结构化数据（含各目标汇总和详细执行记录路径引用）
+- **execution.json** (per-target): 该目标所有 SQL 的详细执行记录
+
+**容错设计:** 目标连接失败自动跳过（标记 skipped）；变异失败跳过该种子；转译失败使用原始 SQL；执行失败记录错误继续处理。
+
 ## 5. 关键技术实现原理
 
 ### 5.1 基于 SQLGlot 的 AST 变异
@@ -331,13 +436,9 @@ python main.py transpile <输入目录> -s <源方言> -t <目标方言>
 - **遍历与修改:** 编写递归函数遍历树节点。例如，定位所有 exp.Literal.number 节点，将其值修改为边界值。
 - **重组:** node.sql() 将修改后的 AST 重新序列化为 SQL 文本。
 
-### 5.2 差分测试与结果归一化
+### 5.2 执行结果记录
 
-在对比异构数据库（Oracle vs SQLite）的执行结果时，必须处理底层数据类型的差异。Analyzer 模块实现了**结果归一化（Normalization）**算法：
-
-- **数值类型:** 将所有数值统一转换为 float 或 Decimal 进行比较，允许 1e-5 的精度误差。
-- **布尔类型:** 将 Oracle 的 0/1 和 SQLite 的 True/False 统一映射为标准布尔值。
-- **空值处理:** 统一处理 NULL (SQL标准) 与空字符串 '' (Oracle 特性) 的差异。
+端到端运行阶段将每条 SQL 在各目标数据库上的执行状态、错误信息、实际执行 SQL、规则应用记录到 `execution.json`，并汇总到 `report.md` / `report.json`，用于后续排障与回归对比。
 
 ## 6. 数据库通用性接口设计 (The Universality Proof)
 
@@ -354,7 +455,7 @@ class DBConnector(ABC):
 
     @abstractmethod
     def execute_query(self, sql: str) -> List[Tuple]:
-        """执行查询并返回归一化的结果集"""
+        """执行查询并返回结果集"""
         pass
 
     @abstractmethod

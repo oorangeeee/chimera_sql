@@ -11,6 +11,7 @@ from typing import Optional, Sequence
 from src.testbed import InitPipeline
 from src.core.transpiler import BatchTranspileRunner, Dialect
 from src.core.mutator import BatchMutationRunner
+from src.pipeline import CampaignRunner
 from src.utils.config_loader import ConfigLoader
 from src.utils.logger import get_logger
 
@@ -93,6 +94,41 @@ def _build_parser() -> argparse.ArgumentParser:
         help="随机种子（用于可复现结果）",
     )
 
+    # run 子命令
+    rn = subparsers.add_parser(
+        "run",
+        help="端到端模糊测试（变异 → 转译 → 执行 → 报告）",
+    )
+    rn.add_argument(
+        "input_dir",
+        help="包含 .sql 种子文件的输入目录（递归扫描）",
+    )
+    rn.add_argument(
+        "-s",
+        "--source",
+        required=True,
+        choices=list(_DIALECT_CHOICES.keys()),
+        help="种子 SQL 的方言",
+    )
+    rn.add_argument(
+        "--targets",
+        default=None,
+        help="逗号分隔的目标名称（默认 config.yaml 中所有 targets）",
+    )
+    rn.add_argument(
+        "-n",
+        "--count",
+        type=int,
+        default=None,
+        help="每条种子生成的变异数量（默认从 config.yaml 读取）",
+    )
+    rn.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="随机种子（用于可复现结果）",
+    )
+
     return parser
 
 
@@ -156,6 +192,46 @@ def _handle_mutate(args: argparse.Namespace) -> None:
     logger.info("变异报告: %s", result.report_path)
 
 
+def _handle_run(args: argparse.Namespace) -> None:
+    """处理 run 子命令（端到端模糊测试流水线）。"""
+    input_dir = Path(args.input_dir)
+    source_dialect = args.source
+
+    # 解析 --targets（逗号分隔 → 列表，None 表示全部）
+    target_names = None
+    if args.targets:
+        target_names = [t.strip() for t in args.targets.split(",") if t.strip()]
+
+    # 确定每条种子的变异数量：CLI 参数 > config.yaml > 默认值 3
+    count = args.count
+    if count is None:
+        try:
+            config = ConfigLoader()
+            count = config.get("mutation.policies.balanced_default.max_mutations_per_seed", 3)
+        except FileNotFoundError:
+            count = 3
+
+    result = CampaignRunner().run(
+        input_dir=input_dir,
+        source_dialect=source_dialect,
+        target_names=target_names,
+        count_per_seed=count,
+        random_seed=args.seed,
+    )
+
+    logger.info("=" * 50)
+    for tr in result.targets:
+        if tr.skipped:
+            logger.info("  [%s] 跳过: %s", tr.target_name, tr.skip_reason)
+        else:
+            logger.info(
+                "  [%s] %d 执行 | %d 成功 | %d 失败 | %.0f ms",
+                tr.target_name, tr.total_executed, tr.success, tr.error, tr.elapsed_ms,
+            )
+    logger.info("输出目录: %s", result.output_dir)
+    logger.info("运行报告: %s", result.report_path)
+
+
 def run(argv: Optional[Sequence[str]] = None) -> None:
     """CLI 公开入口：解析参数 → 分发 → 捕获异常。"""
     parser = _build_parser()
@@ -169,6 +245,7 @@ def run(argv: Optional[Sequence[str]] = None) -> None:
         "init": _handle_init,
         "transpile": _handle_transpile,
         "mutate": _handle_mutate,
+        "run": _handle_run,
     }
 
     try:

@@ -14,17 +14,43 @@ oracle:
 sqlite:
   db_path: "data/test.db"
 
-# Logging
-logging:
-  level: "DEBUG"
-  log_file: "data/logs/chimera.log"
-
-# Schema Initialization
-schema:
-  enable_foreign_keys: true
-  drop_existing: true
-
 # Fuzzing Parameters
 fuzzing:
-  max_mutations: 100
   seed_dir: "data/seeds"
+
+# Mutation (Capability Profile + Policy)
+mutation:
+  builtin_rules:
+    numeric_boundary_values:
+      - "-1"
+      - "0"
+      - "1"
+      - "9999999"
+      - "2147483647"
+      - "9223372036854775807"
+      - "-9999999"
+
+  profiles:
+    oracle_21c:
+      dbms: "oracle"
+      version: "21c"
+      features:
+        - "recursive_cte"
+        - "json_value"
+        - "window_functions"
+        - "except_op"
+
+  policies:
+    balanced_default:
+      max_mutations_per_seed: 3
+
+# 目标数据库定义（用于 run 子命令）
+targets:
+  oracle_xe:
+    db_type: "oracle"      # ConnectorFactory.create() 的参数
+    dialect: "oracle"      # Dialect 枚举值，用于转译 + 变异能力画像
+    version: "21c"         # 用于变异能力画像的版本匹配
+  sqlite_local:
+    db_type: "sqlite"
+    dialect: "sqlite"
+    version: ""
