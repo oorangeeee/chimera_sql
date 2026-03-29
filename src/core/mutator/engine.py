@@ -36,6 +36,7 @@ class MutationEngine:
         registry: StrategyRegistry,
         rng: Optional[Random] = None,
         max_apply: int = 3,
+        source_dialect: Optional[str] = None,
     ) -> None:
         """初始化变异引擎。
 
@@ -44,11 +45,13 @@ class MutationEngine:
             registry: 策略注册表。
             rng: 随机数生成器（用于可复现的变异）。
             max_apply: 单次变异最多应用的策略数量。
+            source_dialect: 种子 SQL 的方言名称（用于按方言解析和输出）。
         """
         self._profile = profile
         self._strategies = registry.get_all()
         self._rng = rng or Random()
         self._max_apply = max_apply
+        self._source_dialect = source_dialect
 
     def mutate_one(self, sql: str, seed_file: str) -> MutationResult:
         """对单条 SQL 执行一次变异。
@@ -63,7 +66,7 @@ class MutationEngine:
         Raises:
             ValueError: SQL 解析失败。
         """
-        tree = sqlglot.parse_one(sql)
+        tree = sqlglot.parse_one(sql, read=self._source_dialect)
 
         # 收集可用的 (策略, 节点) 对
         candidates = self._collect_candidates(tree)
@@ -92,14 +95,14 @@ class MutationEngine:
                 strategies_applied.append(strategy.id)
             except Exception as e:
                 warnings.append(f"策略 {strategy.id} 应用失败: {e}")
-                logger.debug("策略 %s 应用失败: %s", strategy.id, e)
+                logger.warning("策略 %s 应用失败: %s", strategy.id, e)
 
         # 序列化
-        result_sql = tree.sql()
+        result_sql = tree.sql(dialect=self._source_dialect)
 
         # 健全性检查：验证变异后的 SQL 可解析
         try:
-            sqlglot.parse_one(result_sql)
+            sqlglot.parse_one(result_sql, read=self._source_dialect)
         except Exception as e:
             warnings.append(f"变异后 SQL 解析校验失败: {e}")
             logger.debug("变异后 SQL 校验失败: %s -> %s", seed_file, e)

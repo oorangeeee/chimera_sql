@@ -6,12 +6,10 @@ from typing import Any, List, Optional, Tuple
 
 from src.connector.base import DBConnector
 from src.utils.config_loader import ConfigLoader
+from src.utils.constants import PROJECT_ROOT
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-# 项目根目录，用于解析相对数据库路径
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class SQLiteConnector(DBConnector):
@@ -22,7 +20,7 @@ class SQLiteConnector(DBConnector):
         # 将字符串转换为 Path 对象
         db_path = Path(db_path_str)
         # 使用绝对路径
-        self._db_path = (_PROJECT_ROOT / db_path).resolve()
+        self._db_path = (PROJECT_ROOT / db_path).resolve()
         self._conn: Optional[sqlite3.Connection] = None
 
     def connect(self) -> None:

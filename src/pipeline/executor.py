@@ -11,30 +11,12 @@ from typing import Any, Dict, List, Optional
 
 from src.connector.factory import ConnectorFactory
 from src.connector.base import DBConnector
+from src.utils.json_utils import rows_to_jsonable
 from src.utils.logger import get_logger
 
 from .target import TargetDatabase
 
 logger = get_logger("pipeline.executor")
-
-
-def _to_jsonable(value: Any) -> Any:
-    """将结果值转换为可 JSON 序列化的形式。"""
-    if value is None:
-        return None
-    if isinstance(value, (int, float, str, bool)):
-        return value
-    if hasattr(value, "isoformat"):
-        try:
-            return value.isoformat()
-        except Exception:
-            pass
-    return str(value)
-
-
-def _rows_to_jsonable(rows: List[tuple]) -> List[List[Any]]:
-    """将结果行列表转换为 JSON 安全的二维列表。"""
-    return [[_to_jsonable(v) for v in row] for row in rows]
 
 
 @dataclass

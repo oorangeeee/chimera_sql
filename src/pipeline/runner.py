@@ -19,6 +19,7 @@ from src.core.mutator import (
     create_default_registry,
 )
 from src.core.transpiler import Dialect, SQLTranspiler
+from src.utils.constants import PROJECT_ROOT, RESULT_ROOT
 from src.utils.dialect_detector import DialectDetector
 from src.utils.logger import get_logger
 
@@ -27,10 +28,6 @@ from .report import CampaignReport
 from .target import TargetDatabase, load_targets
 
 logger = get_logger("pipeline.runner")
-
-# 项目根目录 & 默认输出根目录
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_RESULT_ROOT = _PROJECT_ROOT / "result"
 
 # Dialect 枚举值映射
 _DIALECT_MAP = {d.value: d for d in Dialect}
@@ -93,7 +90,7 @@ class CampaignRunner:
         Args:
             result_root: 输出根目录（默认项目根目录下的 result/）。
         """
-        self._result_root = result_root or _RESULT_ROOT
+        self._result_root = result_root or RESULT_ROOT
 
     def run(
         self,
@@ -220,7 +217,7 @@ class CampaignRunner:
         profile = CapabilityProfile.from_dialect_version(target.dialect, target.version or None)
         registry = create_default_registry()
         rng = Random(random_seed) if random_seed is not None else Random()
-        engine = MutationEngine(profile, registry, rng)
+        engine = MutationEngine(profile, registry, rng, source_dialect=source.value)
 
         # 构建转译器
         transpiler = SQLTranspiler()

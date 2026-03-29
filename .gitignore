@@ -30,6 +30,7 @@ Thumbs.db
 .env
 
 CLAUDE.md
+plan.md
 
 dockers/
 # SQLite

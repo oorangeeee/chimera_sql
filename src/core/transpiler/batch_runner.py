@@ -12,14 +12,11 @@ from typing import Any, Dict, List, Optional
 from src.core.transpiler.dialect import Dialect
 from src.core.transpiler.report import TranspileReport, TranspileReportSummary
 from src.core.transpiler.transpiler import SQLTranspiler
+from src.utils.constants import PROJECT_ROOT, RESULT_ROOT
 from src.utils.dialect_detector import DialectDetector
 from src.utils.logger import get_logger
 
 logger = get_logger("transpiler.batch")
-
-# 项目根目录 & 默认输出根目录
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_RESULT_ROOT = _PROJECT_ROOT / "result"
 
 
 @dataclass
@@ -46,7 +43,7 @@ class BatchTranspileRunner:
         result_root: Optional[Path] = None,
     ) -> None:
         self._transpiler = transpiler or SQLTranspiler()
-        self._result_root = result_root or _RESULT_ROOT
+        self._result_root = result_root or RESULT_ROOT
 
     # ── 公开方法 ──
 

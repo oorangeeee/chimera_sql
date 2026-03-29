@@ -72,7 +72,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-d",
         "--dialect",
         required=True,
-        help="目标数据库方言（如 sqlite, oracle, mysql）",
+        help="目标数据库方言（如 sqlite, oracle）",
     )
     mt.add_argument(
         "-v",

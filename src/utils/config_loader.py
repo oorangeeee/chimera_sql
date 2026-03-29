@@ -5,6 +5,8 @@ from typing import Any, Dict
 
 import yaml
 
+from src.utils.constants import PROJECT_ROOT
+
 
 class ConfigLoader:
     """单例配置加载器，读取 config/config.yaml。"""
@@ -12,8 +14,8 @@ class ConfigLoader:
     _instance: "ConfigLoader" = None  # type: ignore[assignment]
     _config: Dict[str, Any] = {}
 
-    # 项目根目录：此文件上两级目录（src/utils/ -> 项目根目录）
-    _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
+    # 项目根目录
+    _PROJECT_ROOT: Path = PROJECT_ROOT
 
     def __new__(cls) -> "ConfigLoader":
         if cls._instance is None:
@@ -22,7 +24,7 @@ class ConfigLoader:
         return cls._instance
 
     def _load(self) -> None:
-        config_path = self._PROJECT_ROOT / "config" / "config.yaml"
+        config_path = PROJECT_ROOT / "config" / "config.yaml"
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Configuration file not found: {config_path}\n"

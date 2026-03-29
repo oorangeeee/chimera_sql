@@ -3,9 +3,9 @@
 import logging
 from pathlib import Path
 
-# 项目根目录：此文件上两级目录（src/utils/ -> 项目根目录）
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_LOG_DIR = _PROJECT_ROOT / "data" / "logs"
+from src.utils.constants import PROJECT_ROOT
+
+_LOG_DIR = PROJECT_ROOT / "data" / "logs"
 _LOG_FILE = _LOG_DIR / "chimera.log"
 
 _FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

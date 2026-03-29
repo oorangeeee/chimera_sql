@@ -22,6 +22,7 @@ from src.connector.factory import ConnectorFactory
 from src.testbed import DataPopulator, SchemaInitializer, SeedGenerator
 from src.core.transpiler import Dialect, SQLTranspiler
 from src.utils.config_loader import ConfigLoader
+from src.utils.json_utils import rows_to_jsonable
 from src.utils.logger import get_logger
 
 logger = get_logger("seed_sql_test")
@@ -46,25 +47,6 @@ def _result_dir() -> Path:
 
 def _now_suffix() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-def _to_jsonable(value: Any) -> Any:
-    """将结果值转换为可 JSON 序列化的形式。"""
-    if value is None:
-        return None
-    if isinstance(value, (int, float, str, bool)):
-        return value
-    # datetime / date / time 等
-    if hasattr(value, "isoformat"):
-        try:
-            return value.isoformat()
-        except Exception:
-            pass
-    return str(value)
-
-
-def _rows_to_jsonable(rows: List[tuple]) -> List[List[Any]]:
-    return [[_to_jsonable(v) for v in row] for row in rows]
 
 
 def _rules_to_jsonable(rules: Dict[tuple, List[str]]) -> Dict[str, List[str]]:
@@ -150,7 +132,7 @@ def run() -> Path:
                     entry["databases"][db_type] = {
                         "status": "ok",
                         "row_count": len(rows),
-                        "rows": _rows_to_jsonable(rows),
+                        "rows": rows_to_jsonable(rows),
                         "error": None,
                         "executed_sql": exec_sql,
                         "rules_applied": transpile_result.rules_applied,

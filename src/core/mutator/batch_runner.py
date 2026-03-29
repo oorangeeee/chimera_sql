@@ -11,6 +11,7 @@ from random import Random
 from typing import Any, Dict, List, Optional
 
 from src.utils.dialect_detector import DialectDetector
+from src.utils.constants import PROJECT_ROOT, RESULT_ROOT
 from src.utils.logger import get_logger
 
 from .capability import CapabilityProfile
@@ -19,10 +20,6 @@ from .report import MutationReport, MutationReportSummary
 from .strategy_registry import create_default_registry
 
 logger = get_logger("mutator.batch")
-
-# 项目根目录 & 默认输出根目录
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_RESULT_ROOT = _PROJECT_ROOT / "result"
 
 
 @dataclass
@@ -45,7 +42,7 @@ class BatchMutationRunner:
     """
 
     def __init__(self, result_root: Optional[Path] = None) -> None:
-        self._result_root = result_root or _RESULT_ROOT
+        self._result_root = result_root or RESULT_ROOT
 
     def run(
         self,
@@ -85,7 +82,7 @@ class BatchMutationRunner:
         # 构建策略注册表 & 引擎
         registry = create_default_registry()
         rng = Random(random_seed) if random_seed is not None else Random()
-        engine = MutationEngine(profile, registry, rng)
+        engine = MutationEngine(profile, registry, rng, source_dialect=dialect)
 
         logger.info(
             "批量变异: dialect=%s | 输入: %s | 共 %d 个 SQL 文件 | 每条生成 %d 个变异",
