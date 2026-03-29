@@ -17,7 +17,8 @@ from src.utils.logger import get_logger
 from .capability import CapabilityProfile
 from .engine import MutationEngine
 from .report import MutationReport, MutationReportSummary
-from .strategy_registry import create_default_registry
+from .strategy_base import MutationStrategy
+from .strategy_registry import StrategyRegistry, create_default_registry
 
 logger = get_logger("mutator.batch")
 
@@ -104,24 +105,27 @@ class BatchMutationRunner:
             try:
                 results = engine.mutate_many(sql_text, str(relative), count_per_seed)
 
-                # 写入变异文件
+                # 写入变异文件 & 收集逐条变异策略
+                all_strategies = set()
+                all_warnings = []
+                mutations_detail: List[Dict[str, Any]] = []
                 for idx, mr in enumerate(results, start=1):
                     out_name = f"{relative.stem}_mut{idx:02d}.sql"
                     out_relative = relative.parent / out_name
                     self._write_sql(output_dir, out_relative, mr.sql)
-
-                # 收集所有已应用策略
-                all_strategies = set()
-                all_warnings = []
-                for mr in results:
                     all_strategies.update(mr.strategies_applied)
                     all_warnings.extend(mr.warnings)
+                    mutations_detail.append({
+                        "file": out_name,
+                        "strategies": list(mr.strategies_applied),
+                    })
 
                 entry: Dict[str, Any] = {
                     "file": str(relative),
                     "status": "ok",
                     "generated": len(results),
                     "strategies_used": sorted(all_strategies),
+                    "mutations": mutations_detail,
                     "warnings": all_warnings,
                     "error": "",
                 }
@@ -160,7 +164,12 @@ class BatchMutationRunner:
             total_generated=total_generated,
             failed_seeds=failed_seeds,
         )
-        report_path = MutationReport.generate(output_dir, summary, details)
+
+        # 计算策略使用汇总
+        strategy_summary = self._build_strategy_summary(registry, profile, details)
+        report_path = MutationReport.generate(
+            output_dir, summary, details, strategy_summary=strategy_summary,
+        )
 
         return BatchMutationResult(
             output_dir=output_dir,
@@ -189,6 +198,54 @@ class BatchMutationRunner:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         dir_name = f"mutate_{timestamp}_{dialect}"
         return self._result_root / dir_name
+
+    @staticmethod
+    def _build_strategy_summary(
+        registry: StrategyRegistry,
+        profile: CapabilityProfile,
+        details: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """构建策略使用汇总：统计每条策略的使用次数，分析未使用原因。
+
+        未使用原因分两类：
+        1. 能力门控：策略 requires 中的能力标志在 profile 中不存在
+        2. 无匹配节点：能力满足但种子 SQL 中无对应 AST 节点
+        """
+        # 统计每条策略的使用次数
+        used_counts: Dict[str, int] = {}
+        for d in details:
+            for s in d.get("strategies_used", []):
+                used_counts[s] = used_counts.get(s, 0) + 1
+
+        summary: List[Dict[str, Any]] = []
+        for strategy in registry.get_all():
+            # 检查能力门控
+            missing_flags = [
+                flag for flag in strategy.requires
+                if not profile.has(flag)
+            ]
+            count = used_counts.get(strategy.id, 0)
+
+            if missing_flags:
+                status = "能力门控"
+                reason = f"缺少 {', '.join(missing_flags)}"
+            elif count > 0:
+                status = "已使用"
+                reason = ""
+            else:
+                status = "无匹配节点"
+                reason = "种子 SQL 中无对应 AST 节点"
+
+            summary.append({
+                "id": strategy.id,
+                "category": strategy.category,
+                "description": strategy.description,
+                "used_count": count,
+                "status": status,
+                "reason": reason,
+            })
+
+        return summary
 
     @staticmethod
     def _write_sql(output_dir: Path, relative_path: Path, sql: str) -> Path:

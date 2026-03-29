@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -44,10 +44,13 @@ class MutationReport:
         output_dir: Path,
         summary: MutationReportSummary,
         details: List[Dict[str, Any]],
+        strategy_summary: Optional[List[Dict[str, Any]]] = None,
     ) -> Path:
         """生成变异报告（report.md + report.json），返回 Markdown 报告路径。"""
-        md_path = MutationReport._write_markdown(output_dir, summary, details)
-        MutationReport._write_json(output_dir, summary, details)
+        md_path = MutationReport._write_markdown(
+            output_dir, summary, details, strategy_summary,
+        )
+        MutationReport._write_json(output_dir, summary, details, strategy_summary)
         return md_path
 
     @staticmethod
@@ -55,6 +58,7 @@ class MutationReport:
         output_dir: Path,
         summary: MutationReportSummary,
         details: List[Dict[str, Any]],
+        strategy_summary: Optional[List[Dict[str, Any]]] = None,
     ) -> Path:
         """生成 Markdown 格式报告。"""
         version_str = summary.version or "未指定"
@@ -101,6 +105,23 @@ class MutationReport:
                 )
             md_lines.append("")
 
+        # 变异策略详情（逐条变异的策略使用情况）
+        ok_items = [d for d in details if d["status"] == "ok" and d.get("mutations")]
+        if ok_items:
+            md_lines.append("## 变异策略详情")
+            md_lines.append("")
+            for item in ok_items:
+                md_lines.append(f"### `{item['file']}`")
+                md_lines.append("")
+                md_lines.append("| 变异文件 | 应用策略 |")
+                md_lines.append("|----------|----------|")
+                for mut in item["mutations"]:
+                    strategies = (
+                        ", ".join(mut["strategies"]) if mut["strategies"] else "-"
+                    )
+                    md_lines.append(f"| {mut['file']} | {strategies} |")
+                md_lines.append("")
+
         # 文件清单
         md_lines.append("## 文件清单")
         md_lines.append("")
@@ -119,6 +140,21 @@ class MutationReport:
             )
         md_lines.append("")
 
+        # 策略使用汇总
+        if strategy_summary:
+            md_lines.append("## 策略使用汇总")
+            md_lines.append("")
+            md_lines.append("| 策略 ID | 分类 | 使用次数 | 状态 | 原因 |")
+            md_lines.append("|---------|------|----------|------|------|")
+            for s in strategy_summary:
+                status_mark = "✅" if s["status"] == "已使用" else "❌"
+                reason = s["reason"] if s["reason"] else "-"
+                md_lines.append(
+                    f"| `{s['id']}` | {s['category']} | {s['used_count']} "
+                    f"| {status_mark} {s['status']} | {reason} |"
+                )
+            md_lines.append("")
+
         md_path = output_dir / "report.md"
         md_path.write_text("\n".join(md_lines), encoding="utf-8")
         return md_path
@@ -128,6 +164,7 @@ class MutationReport:
         output_dir: Path,
         summary: MutationReportSummary,
         details: List[Dict[str, Any]],
+        strategy_summary: Optional[List[Dict[str, Any]]] = None,
     ) -> Path:
         """生成 JSON 格式报告。"""
         json_payload = {
@@ -143,6 +180,8 @@ class MutationReport:
             },
             "details": details,
         }
+        if strategy_summary is not None:
+            json_payload["strategy_summary"] = strategy_summary
         json_path = output_dir / "report.json"
         json_path.write_text(
             json.dumps(json_payload, ensure_ascii=False, indent=2), encoding="utf-8"

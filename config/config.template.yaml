@@ -39,6 +39,10 @@ mutation:
         - "json_value"
         - "window_functions"
         - "except_op"
+        - "decode"
+        - "nvl2"
+        - "median"
+        - "except_all"
 
   policies:
     balanced_default:

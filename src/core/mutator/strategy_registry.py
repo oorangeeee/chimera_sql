@@ -6,13 +6,20 @@ from .strategy_base import MutationStrategy
 from .strategies import (
     AggregateSubstitutionStrategy,
     BoundaryInjectionStrategy,
+    CTEExtractionStrategy,
+    DecodeInjectionStrategy,
     DistinctToggleStrategy,
+    ExceptAllToggleStrategy,
+    JoinTypeSwitchStrategy,
     LimitVariationStrategy,
     LogicTautologyStrategy,
+    MedianInjectionStrategy,
     NullInjectionStrategy,
+    NVL2InjectionStrategy,
     OperandSwapStrategy,
     PredicateNegationStrategy,
     SortDirectionFlipStrategy,
+    SubqueryWrapStrategy,
     UnionTypeVariationStrategy,
 )
 
@@ -44,9 +51,10 @@ class StrategyRegistry:
 
 
 def create_default_registry() -> StrategyRegistry:
-    """创建并返回包含全部 10 个通用策略的默认注册表。"""
+    """创建并返回包含全部 17 个策略的默认注册表。"""
     registry = StrategyRegistry()
 
+    # Generic strategies
     registry.register(BoundaryInjectionStrategy())
     registry.register(NullInjectionStrategy())
     registry.register(PredicateNegationStrategy())
@@ -57,5 +65,16 @@ def create_default_registry() -> StrategyRegistry:
     registry.register(DistinctToggleStrategy())
     registry.register(LimitVariationStrategy())
     registry.register(UnionTypeVariationStrategy())
+
+    # Structural strategies
+    registry.register(SubqueryWrapStrategy())
+    registry.register(JoinTypeSwitchStrategy())
+    registry.register(CTEExtractionStrategy())
+
+    # Dialect-aware strategies
+    registry.register(DecodeInjectionStrategy())
+    registry.register(NVL2InjectionStrategy())
+    registry.register(MedianInjectionStrategy())
+    registry.register(ExceptAllToggleStrategy())
 
     return registry

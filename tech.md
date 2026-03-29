@@ -107,13 +107,30 @@ src/core/mutator/
 | `limit_variation` | Limit, Offset | 修改数值（乘 2、设为 0/1 等） |
 | `union_type_variation` | Union | UNION ↔ UNION ALL |
 
-**变异策略分类体系（规划）:**
+**已实现的 3 个结构变异策略（Structural，节点类型匹配）:**
+
+| 策略 ID | 目标节点 | 变异行为 |
+|---------|---------|---------|
+| `subquery_wrap` | Column, Literal | 包装在标量子查询 `(SELECT expr)` 中 |
+| `join_type_switch` | Join | 在 INNER/LEFT/RIGHT/CROSS JOIN 间随机切换 |
+| `cte_extraction` | Subquery（FROM 子句） | 将派生表提取为 CTE |
+
+**已实现的 4 个方言感知策略（Dialect-Aware，能力画像门控）:**
+
+| 策略 ID | 目标节点 | requires | 变异行为 |
+|---------|---------|----------|---------|
+| `decode_injection` | Case（简单 CASE） | `feature.decode` | 转为 Oracle DECODE 函数 |
+| `nvl2_injection` | Coalesce（2 参数） | `feature.nvl2` | 转为 Oracle NVL2 函数 |
+| `median_injection` | Avg | `feature.median` | 替换为 Oracle MEDIAN 函数 |
+| `except_all_toggle` | Except | `feature.except_all` | EXCEPT ↔ EXCEPT ALL |
+
+**变异策略分类体系:**
 
 | 类别 | 说明 | 门控 | 状态 |
 |------|------|------|------|
 | Generic（通用） | 边界值注入、NULL 注入、谓词取反等 | 无（全库可用） | **已实现（10 个）** |
-| Structural（结构） | 子查询包装、JOIN 类型切换、CTE 提取 | 节点类型匹配 | 规划中 |
-| Dialect-Aware（方言感知） | DECODE/MEDIAN/NVL2 注入、EXCEPT ALL | 能力画像标志 | 规划中 |
+| Structural（结构） | 子查询包装、JOIN 类型切换、CTE 提取 | 节点类型匹配 | **已实现（3 个）** |
+| Dialect-Aware（方言感知） | DECODE/NVL2/MEDIAN 注入、EXCEPT ALL | 能力画像标志 | **已实现（4 个）** |
 
 **新增数据库工作量:**
 
