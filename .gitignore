@@ -29,6 +29,7 @@ Thumbs.db
 # Environment
 .env
 
+AGENTS.md
 CLAUDE.md
 plan.md
 

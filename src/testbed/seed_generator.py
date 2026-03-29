@@ -1,6 +1,6 @@
 """种子 SQL 生成器 — 按类别生成覆盖各类 SQL 特性的种子文件。
 
-生成约 70 个 .sql 文件，分为 11 个类别子目录。
+生成约 107 个 .sql 文件，分为 17 个类别子目录。
 所有种子使用通用 SQL 方言，后续由 transpiler 模块转译。
 
 设计原则：
@@ -504,6 +504,225 @@ _SEEDS: Dict[str, List[Tuple[str, str]]] = {
             "SELECT id, username, "
             "COALESCE(json_extract(profile, '$.lang'), 'unknown') AS lang "
             "FROM t_users ORDER BY id",
+        ),
+    ],
+    # ── 12 日期函数 ─────────────────────────────────
+    "12_date_functions": [
+        (
+            "date_comparison.sql",
+            "SELECT id, username, birth_date FROM t_users "
+            "WHERE birth_date > DATE '1990-01-01' ORDER BY id",
+        ),
+        (
+            "date_cast.sql",
+            "SELECT id, username, birth_date, "
+            "CAST(birth_date AS VARCHAR(20)) AS birth_str "
+            "FROM t_users WHERE birth_date IS NOT NULL ORDER BY id",
+        ),
+        (
+            "date_coalesce.sql",
+            "SELECT id, name, COALESCE(release_date, DATE '2000-01-01') AS effective_date "
+            "FROM t_products ORDER BY id",
+        ),
+        (
+            "date_between.sql",
+            "SELECT id, name, release_date FROM t_products "
+            "WHERE release_date BETWEEN DATE '2023-01-01' AND DATE '2024-12-31' ORDER BY id",
+        ),
+        (
+            "date_order.sql",
+            "SELECT id, measurement_date, metric_value FROM t_metrics "
+            "WHERE measurement_date IS NOT NULL ORDER BY measurement_date, id",
+        ),
+        (
+            "date_null_order.sql",
+            "SELECT id, birth_date FROM t_users ORDER BY birth_date, id",
+        ),
+        (
+            "date_aggregation.sql",
+            "SELECT measurement_date, COUNT(*) AS cnt, AVG(metric_value) AS avg_val "
+            "FROM t_metrics WHERE measurement_date IS NOT NULL "
+            "GROUP BY measurement_date ORDER BY measurement_date",
+        ),
+        (
+            "date_join.sql",
+            "SELECT u.id, u.username, o.id AS order_id, o.order_date "
+            "FROM t_users u INNER JOIN t_orders o ON u.id = o.user_id "
+            "WHERE o.order_date IS NOT NULL ORDER BY o.order_date, o.id",
+        ),
+    ],
+    # ── 13 数值函数 ─────────────────────────────────
+    "13_numeric_functions": [
+        (
+            "round.sql",
+            "SELECT id, name, ROUND(price) AS rounded_price FROM t_products ORDER BY id",
+        ),
+        (
+            "round_precision.sql",
+            "SELECT id, name, ROUND(price, 1) AS price_1dp FROM t_products ORDER BY id",
+        ),
+        (
+            "trunc.sql",
+            "SELECT id, username, TRUNC(score) AS score_int "
+            "FROM t_users WHERE score IS NOT NULL ORDER BY id",
+        ),
+        (
+            "mod.sql",
+            "SELECT id, age, MOD(age, 10) AS age_mod FROM t_users "
+            "WHERE age IS NOT NULL ORDER BY id",
+        ),
+        (
+            "abs.sql",
+            "SELECT id, metric_value, ABS(metric_value) AS abs_val "
+            "FROM t_metrics WHERE metric_value IS NOT NULL ORDER BY id",
+        ),
+        (
+            "power_sqrt.sql",
+            "SELECT id, ROUND(POWER(price, 2), 4) AS price_sq FROM t_products "
+            "WHERE price IS NOT NULL ORDER BY id",
+        ),
+        (
+            "float_arithmetic.sql",
+            "SELECT id, name, weight_kg, ROUND(weight_kg * 2.20462, 2) AS weight_lbs "
+            "FROM t_products WHERE weight_kg IS NOT NULL ORDER BY id",
+        ),
+        (
+            "numeric_cast.sql",
+            "SELECT id, height, CAST(height AS INTEGER) AS height_int "
+            "FROM t_users WHERE height IS NOT NULL ORDER BY id",
+        ),
+    ],
+    # ── 14 高级窗口函数 ────────────────────────────
+    "14_advanced_window": [
+        (
+            "lead_lag.sql",
+            "SELECT id, user_id, total_price, "
+            "LEAD(total_price) OVER (PARTITION BY user_id ORDER BY id) AS next_price, "
+            "LAG(total_price) OVER (PARTITION BY user_id ORDER BY id) AS prev_price "
+            "FROM t_orders ORDER BY user_id, id",
+        ),
+        (
+            "ntile.sql",
+            "SELECT id, username, score, "
+            "NTILE(4) OVER (ORDER BY score) AS quartile "
+            "FROM t_users WHERE score IS NOT NULL ORDER BY quartile, id",
+        ),
+        (
+            "first_last_value.sql",
+            "SELECT id, user_id, metric_value, "
+            "FIRST_VALUE(metric_value) OVER (PARTITION BY user_id ORDER BY id) AS first_val, "
+            "LAST_VALUE(metric_value) OVER (PARTITION BY user_id ORDER BY id "
+            "  ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_val "
+            "FROM t_metrics WHERE metric_value IS NOT NULL ORDER BY user_id, id",
+        ),
+        (
+            "row_range_frame.sql",
+            "SELECT id, metric_value, "
+            "AVG(metric_value) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS moving_avg "
+            "FROM t_metrics WHERE metric_value IS NOT NULL ORDER BY id",
+        ),
+        (
+            "percent_rank.sql",
+            "SELECT id, username, score, "
+            "PERCENT_RANK() OVER (ORDER BY score) AS pct_rank "
+            "FROM t_users WHERE score IS NOT NULL ORDER BY pct_rank, id",
+        ),
+        (
+            "cumulative_sum.sql",
+            "SELECT id, quantity, total_price, "
+            "SUM(total_price) OVER (ORDER BY id ROWS UNBOUNDED PRECEDING) AS cumulative "
+            "FROM t_orders ORDER BY id",
+        ),
+    ],
+    # ── 15 高级字符串函数 ───────────────────────────
+    "15_string_advanced": [
+        (
+            "instr.sql",
+            "SELECT id, username, INSTR(username, 'a') AS pos_a FROM t_users ORDER BY id",
+        ),
+        (
+            "replace.sql",
+            "SELECT id, username, REPLACE(username, 'a', 'X') AS replaced FROM t_users ORDER BY id",
+        ),
+        (
+            "substr_negative.sql",
+            "SELECT id, username, SUBSTR(username, -2, 2) AS last2 FROM t_users ORDER BY id",
+        ),
+        (
+            "concat_multi.sql",
+            "SELECT id, username || ' (' || COALESCE(email, 'N/A') || ')' AS contact "
+            "FROM t_users ORDER BY id",
+        ),
+        (
+            "char_trim.sql",
+            "SELECT id, initials, TRIM(initials) AS trimmed, LENGTH(TRIM(initials)) AS trimmed_len "
+            "FROM t_users WHERE initials IS NOT NULL ORDER BY id",
+        ),
+        (
+            "group_concat.sql",
+            "SELECT entity_type, GROUP_CONCAT(tag, ', ') AS tags "
+            "FROM t_tags WHERE entity_type = 'user' "
+            "GROUP BY entity_type ORDER BY entity_type",
+        ),
+    ],
+    # ── 16 高级连接 ────────────────────────────────
+    "16_joins_advanced": [
+        (
+            "cross_join.sql",
+            "SELECT u.username, p.name, u.score + p.price AS combo "
+            "FROM t_users u CROSS JOIN t_products p "
+            "WHERE u.score IS NOT NULL AND p.price < 50 ORDER BY u.id, p.id",
+        ),
+        (
+            "multi_join_agg.sql",
+            "SELECT p.category, COUNT(DISTINCT o.id) AS order_count, SUM(o.total_price) AS total "
+            "FROM t_orders o "
+            "INNER JOIN t_products p ON o.product_id = p.id "
+            "INNER JOIN t_users u ON o.user_id = u.id "
+            "WHERE p.category IS NOT NULL "
+            "GROUP BY p.category ORDER BY p.category",
+        ),
+        (
+            "self_join_hierarchy.sql",
+            "SELECT e.username AS employee, m.username AS manager "
+            "FROM t_users e LEFT JOIN t_users m ON e.manager_id = m.id "
+            "ORDER BY e.id",
+        ),
+        (
+            "join_subquery.sql",
+            "SELECT u.username, sub.order_total "
+            "FROM t_users u "
+            "INNER JOIN (SELECT user_id, SUM(total_price) AS order_total "
+            "  FROM t_orders GROUP BY user_id) sub ON u.id = sub.user_id "
+            "ORDER BY sub.order_total DESC, u.id",
+        ),
+    ],
+    # ── 17 类型转换 ────────────────────────────────
+    "17_cast_types": [
+        (
+            "cast_date_to_varchar.sql",
+            "SELECT id, username, CAST(birth_date AS VARCHAR(30)) AS birth_str "
+            "FROM t_users WHERE birth_date IS NOT NULL ORDER BY id",
+        ),
+        (
+            "cast_varchar_to_int.sql",
+            "SELECT id, name, CAST(stock AS INTEGER) AS stock_int "
+            "FROM t_products WHERE stock IS NOT NULL ORDER BY id",
+        ),
+        (
+            "cast_to_decimal.sql",
+            "SELECT id, username, CAST(age AS DECIMAL(5,2)) AS age_dec "
+            "FROM t_users WHERE age IS NOT NULL ORDER BY id",
+        ),
+        (
+            "cast_float_to_int.sql",
+            "SELECT id, name, ROUND(weight_kg) AS weight_int "
+            "FROM t_products WHERE weight_kg IS NOT NULL ORDER BY id",
+        ),
+        (
+            "cast_in_expression.sql",
+            "SELECT id, username, score, CAST(score AS INTEGER) + COALESCE(CAST(age AS INTEGER), 0) AS combo "
+            "FROM t_users WHERE score IS NOT NULL ORDER BY id",
         ),
     ],
 }

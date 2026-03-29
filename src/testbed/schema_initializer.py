@@ -21,12 +21,18 @@ _TYPE_MAP: Dict[str, Dict[str, str]] = {
         "VARCHAR": "VARCHAR2",
         "DECIMAL": "NUMBER",
         "TIMESTAMP": "TIMESTAMP",
+        "DATE": "DATE",
+        "FLOAT": "BINARY_DOUBLE",
+        "CHAR": "CHAR",
     },
     "sqlite": {
         "INTEGER": "INTEGER",
         "VARCHAR": "TEXT",
         "DECIMAL": "REAL",
         "TIMESTAMP": "TEXT",
+        "DATE": "TEXT",
+        "FLOAT": "REAL",
+        "CHAR": "TEXT",
     },
 }
 
@@ -90,6 +96,9 @@ TABLES: List[TableDef] = [
             ColumnDef("created_at", "TIMESTAMP"),
             ColumnDef("manager_id", "INTEGER"),  # 自关联 FK，用于递归 CTE / 自连接
             ColumnDef("profile", "VARCHAR(500)"),  # JSON 格式用户配置
+            ColumnDef("birth_date", "DATE"),  # 日期类型测试
+            ColumnDef("height", "FLOAT"),  # 浮点类型测试
+            ColumnDef("initials", "CHAR(3)"),  # 定长字符测试（Oracle 空格填充）
         ],
         foreign_keys=[
             ForeignKeyDef("manager_id", "t_users", "id"),
@@ -106,6 +115,8 @@ TABLES: List[TableDef] = [
             ColumnDef("stock", "INTEGER"),
             ColumnDef("discontinued", "INTEGER", nullable=False, default="0"),
             ColumnDef("metadata", "VARCHAR(500)"),  # JSON 格式产品属性
+            ColumnDef("release_date", "DATE"),  # 日期类型测试
+            ColumnDef("weight_kg", "FLOAT"),  # 浮点类型测试
         ],
     ),
     # ---------- t_orders ----------
@@ -139,6 +150,7 @@ TABLES: List[TableDef] = [
             ColumnDef("metric_name", "VARCHAR(50)", nullable=False),
             ColumnDef("metric_value", "DECIMAL(15,5)"),
             ColumnDef("recorded_at", "TIMESTAMP"),
+            ColumnDef("measurement_date", "DATE"),  # 日期类型测试
         ],
         foreign_keys=[
             ForeignKeyDef("user_id", "t_users", "id"),

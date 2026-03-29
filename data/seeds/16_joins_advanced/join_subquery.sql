@@ -1,0 +1,1 @@
+SELECT u.username, sub.order_total FROM t_users u INNER JOIN (SELECT user_id, SUM(total_price) AS order_total   FROM t_orders GROUP BY user_id) sub ON u.id = sub.user_id ORDER BY sub.order_total DESC, u.id

@@ -94,6 +94,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="随机种子（用于可复现结果）",
     )
 
+    # verify 子命令
+    vf = subparsers.add_parser(
+        "verify",
+        help="验证转译正确率（双端执行 + 结果比较）",
+    )
+    vf.add_argument(
+        "input_dir",
+        help="包含 .sql 种子文件的输入目录（递归扫描）",
+    )
+    vf.add_argument(
+        "-s",
+        "--source",
+        required=True,
+        choices=list(_DIALECT_CHOICES.keys()),
+        help="源 SQL 方言",
+    )
+    vf.add_argument(
+        "-t",
+        "--target",
+        required=True,
+        choices=list(_DIALECT_CHOICES.keys()),
+        help="目标 SQL 方言",
+    )
+    vf.add_argument(
+        "--skip-init",
+        action="store_true",
+        help="跳过数据库 Schema/Data 初始化",
+    )
+
     # run 子命令
     rn = subparsers.add_parser(
         "run",
@@ -200,6 +229,48 @@ def _handle_mutate(args: argparse.Namespace) -> None:
     logger.info("变异报告: %s", result.report_path)
 
 
+def _handle_verify(args: argparse.Namespace) -> None:
+    """处理 verify 子命令（转译正确率验证）。"""
+    from src.verifier.runner import VerifyRunner
+
+    input_dir = Path(args.input_dir)
+    source = _DIALECT_CHOICES[args.source]
+    target = _DIALECT_CHOICES[args.target]
+
+    runner = VerifyRunner()
+    report = runner.run(
+        seed_dir=input_dir,
+        source_dialect=source,
+        target_dialect=target,
+        init_db=not args.skip_init,
+    )
+
+    logger.info("=" * 50)
+    logger.info(
+        "Level 1 - 执行通过率: %.1f%% (%d/%d)",
+        report.metrics.execution_pass_rate * 100,
+        report.metrics.target_exec_ok,
+        report.metrics.total,
+    )
+    logger.info(
+        "Level 2 - 语义等价率: %.1f%% (%d/%d)",
+        report.metrics.equivalence_rate * 100,
+        report.metrics.equivalent,
+        report.metrics.equivalent + report.metrics.partial_match + report.metrics.mismatch,
+    )
+    logger.info(
+        "  equivalent=%d | partial=%d | mismatch=%d | target_error=%d | source_error=%d | skip=%d",
+        report.metrics.equivalent,
+        report.metrics.partial_match,
+        report.metrics.mismatch,
+        report.metrics.target_exec_fail,
+        report.metrics.source_exec_fail,
+        report.metrics.skipped,
+    )
+    logger.info("报告: %s", report.report_path)
+    logger.info("JSON: %s", report.json_path)
+
+
 def _handle_run(args: argparse.Namespace) -> None:
     """处理 run 子命令（端到端流水线）。"""
     input_dir = Path(args.input_dir)
@@ -255,6 +326,7 @@ def run(argv: Optional[Sequence[str]] = None) -> None:
         "init": _handle_init,
         "transpile": _handle_transpile,
         "mutate": _handle_mutate,
+        "verify": _handle_verify,
         "run": _handle_run,
     }
 
