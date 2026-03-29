@@ -74,7 +74,7 @@ class BatchMutationRunner:
         sql_files = self._collect_sql_files(input_dir)
         if not sql_files:
             raise ValueError(f"未找到 .sql 文件: {input_dir}")
-        self._validate_dialect(sql_files, input_dir, dialect)
+        sql_map = DialectDetector.validate_sql_files(sql_files, input_dir, dialect)
 
         # 构建能力画像（方言校验在此完成）
         profile = CapabilityProfile.from_dialect_version(dialect, version)
@@ -97,16 +97,16 @@ class BatchMutationRunner:
         details: List[Dict[str, Any]] = []
         total_generated = 0
 
-        for sql_path in sql_files:
-            relative = sql_path.relative_to(input_dir)
-            sql_text = sql_path.read_text(encoding="utf-8").strip()
+        for relative_str, sql_text in sql_map.items():
+            relative = Path(relative_str)
+            sql_text = sql_text.strip()
 
             try:
                 results = engine.mutate_many(sql_text, str(relative), count_per_seed)
 
                 # 写入变异文件
                 for idx, mr in enumerate(results, start=1):
-                    out_name = f"{sql_path.stem}_mut{idx:02d}.sql"
+                    out_name = f"{relative.stem}_mut{idx:02d}.sql"
                     out_relative = relative.parent / out_name
                     self._write_sql(output_dir, out_relative, mr.sql)
 
@@ -178,27 +178,6 @@ class BatchMutationRunner:
         """校验输入参数，失败抛 ValueError。"""
         if not input_dir.is_dir():
             raise ValueError(f"输入目录不存在: {input_dir}")
-
-    @staticmethod
-    def _validate_dialect(
-        sql_files: List[Path],
-        input_dir: Path,
-        dialect: str,
-    ) -> None:
-        """校验所有种子 SQL 与目标方言兼容，不兼容时抛 ValueError。"""
-        sql_map = {
-            str(p.relative_to(input_dir)): p.read_text(encoding="utf-8")
-            for p in sql_files
-        }
-        incompatible = DialectDetector.detect_incompatible(sql_map, dialect)
-        if incompatible:
-            lines = "\n".join(
-                f"  - {item['file']}: {item['reason']}" for item in incompatible
-            )
-            raise ValueError(
-                f"以下种子 SQL 与方言 '{dialect}' 不兼容:\n{lines}\n"
-                f"共 {len(incompatible)} 个文件不兼容，请确认种子 SQL 的方言是否正确。"
-            )
 
     @staticmethod
     def _collect_sql_files(directory: Path) -> List[Path]:

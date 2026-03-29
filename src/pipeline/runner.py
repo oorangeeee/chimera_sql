@@ -131,7 +131,7 @@ class CampaignRunner:
             raise ValueError(f"未找到 .sql 种子文件: {input_dir}")
 
         # 校验种子 SQL 与源方言兼容
-        self._validate_source_dialect(seed_files, input_dir, source_dialect)
+        seed_sql_map = DialectDetector.validate_sql_files(seed_files, input_dir, source_dialect)
 
         # 加载目标列表
         targets = load_targets(target_names)
@@ -259,43 +259,84 @@ class CampaignRunner:
                     continue
 
                 # 逐变异转译 + 执行
-                for idx, mr in enumerate(mutations, start=1):
-                    out_name = f"{seed_path.stem}_mut{idx:02d}.sql"
-                    out_relative = relative.parent / out_name
-
-                    # 转译
-                    try:
-                        tr = transpiler.transpile(mr.sql, source, target_dialect)
-                        exec_sql = tr.sql
-                        transpile_rules = tr.rules_applied
-                        transpile_warnings = tr.warnings
-                    except Exception as e:
-                        # 转译失败时使用变异后的原始 SQL
-                        exec_sql = mr.sql
-                        transpile_rules = []
-                        transpile_warnings = [f"转译失败: {e}"]
-                        logger.debug("%s: 转译失败，使用原始 SQL: %s", out_relative, e)
-
-                    # 写入变异+转译后的 SQL 文件
-                    sql_out_path = target_output / out_relative
-                    sql_out_path.parent.mkdir(parents=True, exist_ok=True)
-                    sql_out_path.write_text(exec_sql + "\n", encoding="utf-8")
-
-                    # 执行
-                    metadata = {
-                        "file": str(out_relative),
-                        "seed_file": str(relative),
-                        "mutation_strategies": mr.strategies_applied,
-                        "transpile_rules": transpile_rules,
-                        "transpile_warnings": transpile_warnings,
-                    }
-                    result = executor.execute_one(exec_sql, metadata)
-                    all_exec_results.append(result)
+                self._process_mutations(
+                    mutations, relative, seed_path, target_output,
+                    source, target_dialect, transpiler, executor,
+                    all_exec_results,
+                )
 
         finally:
             executor.close()
 
-        # 写入 execution.json
+        # 汇总结果
+        return self._build_target_result(target, target_output, all_exec_results, t_target_start)
+
+    @staticmethod
+    def _resolve_dialect(dialect_str: str) -> Dialect:
+        """将方言字符串映射为 Dialect 枚举，不支持时抛 ValueError。"""
+        dialect = _DIALECT_MAP.get(dialect_str.lower())
+        if dialect is None:
+            supported = list(_DIALECT_MAP.keys())
+            raise ValueError(
+                f"不支持的方言: '{dialect_str}'。支持的方言: {supported}"
+            )
+        return dialect
+
+    # ── 私有方法：目标级子流程 ──
+
+    @staticmethod
+    def _process_mutations(
+        mutations: List["MutationResult"],
+        relative: Path,
+        seed_path: Path,
+        target_output: Path,
+        source: Dialect,
+        target_dialect: Dialect,
+        transpiler: "SQLTranspiler",
+        executor: "TargetExecutor",
+        all_exec_results: List["SQLExecutionResult"],
+    ) -> None:
+        """对单条种子的所有变异执行转译 + 写入 + 数据库执行。"""
+        for idx, mr in enumerate(mutations, start=1):
+            out_name = f"{seed_path.stem}_mut{idx:02d}.sql"
+            out_relative = relative.parent / out_name
+
+            # 转译
+            try:
+                tr = transpiler.transpile(mr.sql, source, target_dialect)
+                exec_sql = tr.sql
+                transpile_rules = tr.rules_applied
+                transpile_warnings = tr.warnings
+            except Exception as e:
+                exec_sql = mr.sql
+                transpile_rules = []
+                transpile_warnings = [f"转译失败: {e}"]
+                logger.debug("%s: 转译失败，使用原始 SQL: %s", out_relative, e)
+
+            # 写入 SQL 文件
+            sql_out_path = target_output / out_relative
+            sql_out_path.parent.mkdir(parents=True, exist_ok=True)
+            sql_out_path.write_text(exec_sql + "\n", encoding="utf-8")
+
+            # 执行
+            metadata = {
+                "file": str(out_relative),
+                "seed_file": str(relative),
+                "mutation_strategies": mr.strategies_applied,
+                "transpile_rules": transpile_rules,
+                "transpile_warnings": transpile_warnings,
+            }
+            result = executor.execute_one(exec_sql, metadata)
+            all_exec_results.append(result)
+
+    @staticmethod
+    def _build_target_result(
+        target: TargetDatabase,
+        target_output: Path,
+        all_exec_results: List["SQLExecutionResult"],
+        t_target_start: float,
+    ) -> tuple[TargetRunResult, Dict[str, Any]]:
+        """写入 execution.json 并构建返回值。"""
         target_elapsed = (time.perf_counter() - t_target_start) * 1000
         success_count = sum(1 for r in all_exec_results if r.status == "ok")
         error_count = sum(1 for r in all_exec_results if r.status == "error")
@@ -329,40 +370,10 @@ class CampaignRunner:
             error=error_count,
             elapsed_ms=round(target_elapsed, 1),
         )
-        report_data = self._build_target_report_data(target, run_result, all_exec_results)
+        report_data = CampaignRunner._build_target_report_data(
+            target, run_result, all_exec_results,
+        )
         return run_result, report_data
-
-    @staticmethod
-    def _resolve_dialect(dialect_str: str) -> Dialect:
-        """将方言字符串映射为 Dialect 枚举，不支持时抛 ValueError。"""
-        dialect = _DIALECT_MAP.get(dialect_str.lower())
-        if dialect is None:
-            supported = list(_DIALECT_MAP.keys())
-            raise ValueError(
-                f"不支持的方言: '{dialect_str}'。支持的方言: {supported}"
-            )
-        return dialect
-
-    @staticmethod
-    def _validate_source_dialect(
-        seed_files: List[Path],
-        input_dir: Path,
-        dialect: str,
-    ) -> None:
-        """校验所有种子 SQL 与源方言兼容，不兼容时抛 ValueError。"""
-        sql_map = {
-            str(p.relative_to(input_dir)): p.read_text(encoding="utf-8")
-            for p in seed_files
-        }
-        incompatible = DialectDetector.detect_incompatible(sql_map, dialect)
-        if incompatible:
-            lines = "\n".join(
-                f"  - {item['file']}: {item['reason']}" for item in incompatible
-            )
-            raise ValueError(
-                f"以下种子 SQL 与方言 '{dialect}' 不兼容:\n{lines}\n"
-                f"共 {len(incompatible)} 个文件不兼容，请确认种子 SQL 的方言是否正确。"
-            )
 
     @staticmethod
     def _build_target_report_data(

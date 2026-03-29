@@ -11,7 +11,8 @@
 """
 
 import re
-from typing import Dict, List, Pattern
+from pathlib import Path
+from typing import Dict, List, Optional, Pattern
 
 
 # ── 方言特有语法签名 ──
@@ -163,6 +164,46 @@ class DialectDetector:
                     break  # 每个文件只报告第一个不兼容特征
 
         return results
+
+    @staticmethod
+    def validate_sql_files(
+        sql_files: List[Path],
+        input_dir: Path,
+        dialect: str,
+        label: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """校验 SQL 文件与方言兼容性，不兼容时抛 ValueError 并返回 sql_map。
+
+        统一的方言校验入口，供 mutator/transpiler/pipeline 调用。
+        返回 sql_map 可被后续流程复用，避免重复读取文件。
+
+        Args:
+            sql_files: SQL 文件路径列表。
+            input_dir: 输入根目录（用于计算相对路径）。
+            dialect: 目标方言名称。
+            label: 错误消息中的方言标签，默认与 dialect 相同。
+
+        Returns:
+            {相对路径: SQL 内容} 字典，供后续流程复用。
+
+        Raises:
+            ValueError: 存在不兼容的 SQL 文件时抛出。
+        """
+        sql_map = {
+            str(p.relative_to(input_dir)): p.read_text(encoding="utf-8")
+            for p in sql_files
+        }
+        incompatible = DialectDetector.detect_incompatible(sql_map, dialect)
+        if incompatible:
+            display = label or dialect
+            lines = "\n".join(
+                f"  - {item['file']}: {item['reason']}" for item in incompatible
+            )
+            raise ValueError(
+                f"以下种子 SQL 与方言 '{display}' 不兼容:\n{lines}\n"
+                f"共 {len(incompatible)} 个文件不兼容，请确认种子 SQL 的方言是否正确。"
+            )
+        return sql_map
 
 
 def _strip_non_code(sql: str) -> str:

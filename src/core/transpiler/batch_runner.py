@@ -65,7 +65,7 @@ class BatchTranspileRunner:
             raise ValueError(f"未找到 .sql 文件: {input_dir}")
 
         # 校验种子 SQL 与源方言兼容
-        self._validate_source_dialect(sql_files, input_dir, source)
+        sql_map = DialectDetector.validate_sql_files(sql_files, input_dir, source.value)
 
         logger.info(
             "批量转译: %s → %s | 输入: %s | 共 %d 个 SQL 文件",
@@ -152,27 +152,6 @@ class BatchTranspileRunner:
             raise ValueError(f"输入目录不存在: {input_dir}")
         if source == target:
             raise ValueError(f"源方言与目标方言相同 ({source.value})，无需转译")
-
-    @staticmethod
-    def _validate_source_dialect(
-        sql_files: List[Path],
-        input_dir: Path,
-        source: Dialect,
-    ) -> None:
-        """校验所有种子 SQL 与源方言兼容，不兼容时抛 ValueError。"""
-        sql_map = {
-            str(p.relative_to(input_dir)): p.read_text(encoding="utf-8")
-            for p in sql_files
-        }
-        incompatible = DialectDetector.detect_incompatible(sql_map, source.value)
-        if incompatible:
-            lines = "\n".join(
-                f"  - {item['file']}: {item['reason']}" for item in incompatible
-            )
-            raise ValueError(
-                f"以下种子 SQL 与源方言 '{source.value}' 不兼容:\n{lines}\n"
-                f"共 {len(incompatible)} 个文件不兼容，请确认种子 SQL 的方言是否正确。"
-            )
 
     @staticmethod
     def _collect_sql_files(directory: Path) -> List[Path]:
