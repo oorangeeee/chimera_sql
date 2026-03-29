@@ -35,7 +35,7 @@ class DecodeInjectionStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Case,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """将简单 CASE 转换为 DECODE 函数。"""
         if not isinstance(node, exp.Case):
             return node

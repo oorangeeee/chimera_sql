@@ -41,7 +41,7 @@ class PredicateNegationStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """将比较运算符替换为其取反形式。"""
         negated_cls = _NEGATION_MAP.get(type(node))
         if negated_cls is None:

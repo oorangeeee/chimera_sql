@@ -31,7 +31,7 @@ class DistinctToggleStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Select,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """切换 DISTINCT 修饰符。"""
         if not isinstance(node, exp.Select):
             return node

@@ -11,9 +11,12 @@ import sqlglot.expressions as exp
 
 from ..strategy_base import MutationStrategy
 
+# 需要补 FROM DUAL 的方言
+_REQUIRES_FROM_DUAL = {"oracle"}
+
 
 class SubqueryWrapStrategy(MutationStrategy):
-    """标量子查询包装：将列引用或字面量包装在 (SELECT expr) 中。"""
+    """标量子查询包装：将列引用或字面量包装在标量子查询中。"""
 
     @property
     def id(self) -> str:
@@ -31,6 +34,16 @@ class SubqueryWrapStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Column, exp.Literal)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
-        """将节点包装在标量子查询中。"""
-        return exp.Subquery(this=exp.Select(expressions=[node.copy()]))
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
+        """将节点包装在标量子查询中。
+
+        Oracle 要求裸标量子查询必须包含 FROM DUAL（ORA-00923），
+        此处根据方言自动补全。
+        """
+        select = exp.Select(expressions=[node.copy()])
+        if dialect and dialect.lower() in _REQUIRES_FROM_DUAL:
+            select.set(
+                "from_",
+                exp.From(this=exp.Table(this=exp.Identifier(this="DUAL"))),
+            )
+        return exp.Subquery(this=select)

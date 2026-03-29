@@ -31,7 +31,7 @@ class OperandSwapStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.EQ, exp.GT, exp.LT, exp.Add, exp.Mul)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """交换 this 与 expression。"""
         left = node.args.get("this")
         right = node.args.get("expression")

@@ -35,7 +35,7 @@ class MedianInjectionStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Avg,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """将 AVG(expr) 替换为 MEDIAN(expr)。"""
         if not isinstance(node, exp.Avg):
             return node

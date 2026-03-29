@@ -31,7 +31,7 @@ class LogicTautologyStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Where, exp.Having)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """在条件尾部注入恒真或恒假表达式。"""
         if not isinstance(node, (exp.Where, exp.Having)):
             return node

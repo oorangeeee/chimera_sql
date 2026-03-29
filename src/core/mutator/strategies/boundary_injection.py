@@ -50,7 +50,7 @@ class BoundaryInjectionStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Literal,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """替换数字字面量为随机边界值。"""
         if not isinstance(node, exp.Literal) or not node.is_number:
             return node

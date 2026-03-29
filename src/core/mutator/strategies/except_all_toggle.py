@@ -35,7 +35,7 @@ class ExceptAllToggleStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Except,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """翻转 EXCEPT 的 distinct 标志。"""
         if not isinstance(node, exp.Except):
             return node

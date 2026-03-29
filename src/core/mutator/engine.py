@@ -88,7 +88,7 @@ class MutationEngine:
 
         for strategy, node in selected:
             try:
-                mutated_node = strategy.mutate(node, self._rng)
+                mutated_node = strategy.mutate(node, self._rng, self._source_dialect)
                 if mutated_node is not node:
                     # 在 AST 中原地替换节点（不重建整棵树）
                     node.replace(mutated_node)

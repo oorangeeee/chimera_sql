@@ -40,7 +40,7 @@ class LimitVariationStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Limit, exp.Offset)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """修改 LIMIT/OFFSET 的数值。"""
         if not isinstance(node, (exp.Limit, exp.Offset)):
             return node

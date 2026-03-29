@@ -42,7 +42,7 @@ class AggregateSubstitutionStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """将聚合函数替换为随机选取的另一种聚合函数。"""
         alternatives = _AGGREGATE_ALTERNATIVES.get(type(node))
         if not alternatives:

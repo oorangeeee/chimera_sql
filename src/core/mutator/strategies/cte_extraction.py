@@ -31,7 +31,7 @@ class CTEExtractionStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Subquery,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """将派生表提取为 CTE。"""
         if not isinstance(node, exp.Subquery):
             return node

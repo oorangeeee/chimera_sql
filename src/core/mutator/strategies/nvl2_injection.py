@@ -35,7 +35,7 @@ class NVL2InjectionStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Coalesce,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """将 COALESCE(a, b) 转换为 NVL2(a, a, b)。"""
         if not isinstance(node, exp.Coalesce):
             return node

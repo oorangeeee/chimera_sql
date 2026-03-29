@@ -41,12 +41,13 @@ class MutationStrategy(ABC):
         """策略目标 AST 节点类型元组。"""
 
     @abstractmethod
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """对目标 AST 节点执行变异并返回变异后的节点。
 
         Args:
             node: 目标 AST 节点。
             rng: 随机数生成器（确保可复现）。
+            dialect: 当前 SQL 的方言名称（策略可用于方言感知的变异）。
 
         Returns:
             变异后的 AST 节点。

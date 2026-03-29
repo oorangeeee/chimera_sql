@@ -97,18 +97,18 @@ def _build_parser() -> argparse.ArgumentParser:
     # run 子命令
     rn = subparsers.add_parser(
         "run",
-        help="端到端模糊测试（变异 → 转译 → 执行 → 分析报告）",
+        help="端到端流水线（变异 → 转译 → 执行 → 分析报告）",
     )
     rn.add_argument(
         "input_dir",
-        help="包含 .sql 种子文件的输入目录（递归扫描）",
+        help="包含 .sql 文件的输入目录（递归扫描）",
     )
     rn.add_argument(
         "-s",
         "--source",
         required=True,
         choices=list(_DIALECT_CHOICES.keys()),
-        help="种子 SQL 的方言",
+        help="源 SQL 方言",
     )
     rn.add_argument(
         "-t",
@@ -118,17 +118,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="目标 SQL 方言（与源方言相同时跳过转译）",
     )
     rn.add_argument(
+        "--mode",
+        choices=["fuzz", "exec"],
+        default="fuzz",
+        help="流水线模式: fuzz=变异→转译→执行→分析（默认）, exec=转译→执行→分析",
+    )
+    rn.add_argument(
         "-n",
         "--count",
         type=int,
         default=None,
-        help="每条种子生成的变异数量（默认从 config.yaml 读取）",
+        help="[fuzz] 每条种子生成的变异数量（默认从 config.yaml 读取）",
     )
     rn.add_argument(
         "--seed",
         type=int,
         default=None,
-        help="随机种子（用于可复现结果）",
+        help="[fuzz] 随机种子（用于可复现结果）",
     )
 
     return parser
@@ -195,14 +201,15 @@ def _handle_mutate(args: argparse.Namespace) -> None:
 
 
 def _handle_run(args: argparse.Namespace) -> None:
-    """处理 run 子命令（端到端模糊测试流水线）。"""
+    """处理 run 子命令（端到端流水线）。"""
     input_dir = Path(args.input_dir)
     source_dialect = args.source
     target_dialect = args.target
+    mode = args.mode
 
-    # 确定每条种子的变异数量：CLI 参数 > config.yaml > 默认值 3
+    # 确定每条种子的变异数量（仅 fuzz 模式）：CLI 参数 > config.yaml > 默认值 3
     count = args.count
-    if count is None:
+    if mode == "fuzz" and count is None:
         try:
             config = ConfigLoader()
             count = config.get("mutation.policies.balanced_default.max_mutations_per_seed", 3)
@@ -213,10 +220,12 @@ def _handle_run(args: argparse.Namespace) -> None:
         input_dir=input_dir,
         source_dialect=source_dialect,
         target_dialect=target_dialect,
-        count_per_seed=count,
+        mode=mode,
+        count_per_seed=count or 3,
         random_seed=args.seed,
     )
 
+    mode_label = "模糊测试" if mode == "fuzz" else "转译执行"
     logger.info("=" * 50)
     for tr in result.targets:
         if tr.skipped:

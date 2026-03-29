@@ -39,7 +39,7 @@ class JoinTypeSwitchStrategy(MutationStrategy):
     def node_types(self) -> Tuple[Type[exp.Expression], ...]:
         return (exp.Join,)
 
-    def mutate(self, node: exp.Expression, rng: Random) -> exp.Expression:
+    def mutate(self, node: exp.Expression, rng: Random, dialect: str | None = None) -> exp.Expression:
         """随机切换 JOIN 类型。"""
         if not isinstance(node, exp.Join):
             return node
