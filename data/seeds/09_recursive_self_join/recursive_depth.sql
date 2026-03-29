@@ -1,1 +1,1 @@
-WITH RECURSIVE depth_cte AS (SELECT id, username, 0 AS lvl FROM t_users WHERE manager_id IS NULL UNION ALL SELECT e.id, e.username, d.lvl + 1 FROM t_users e INNER JOIN depth_cte d ON e.manager_id = d.id) SELECT id, username, lvl FROM depth_cte ORDER BY lvl, id
+WITH RECURSIVE depth_cte(id, username, lvl) AS (SELECT id, username, 0 AS lvl FROM t_users WHERE manager_id IS NULL UNION ALL SELECT e.id, e.username, d.lvl + 1 FROM t_users e INNER JOIN depth_cte d ON e.manager_id = d.id) SELECT id, username, lvl FROM depth_cte ORDER BY lvl, id

@@ -97,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # run 子命令
     rn = subparsers.add_parser(
         "run",
-        help="端到端模糊测试（变异 → 转译 → 执行 → 报告）",
+        help="端到端模糊测试（变异 → 转译 → 执行 → 分析报告）",
     )
     rn.add_argument(
         "input_dir",
@@ -111,9 +111,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="种子 SQL 的方言",
     )
     rn.add_argument(
-        "--targets",
-        default=None,
-        help="逗号分隔的目标名称（默认 config.yaml 中所有 targets）",
+        "-t",
+        "--target",
+        required=True,
+        choices=list(_DIALECT_CHOICES.keys()),
+        help="目标 SQL 方言（与源方言相同时跳过转译）",
     )
     rn.add_argument(
         "-n",
@@ -196,11 +198,7 @@ def _handle_run(args: argparse.Namespace) -> None:
     """处理 run 子命令（端到端模糊测试流水线）。"""
     input_dir = Path(args.input_dir)
     source_dialect = args.source
-
-    # 解析 --targets（逗号分隔 → 列表，None 表示全部）
-    target_names = None
-    if args.targets:
-        target_names = [t.strip() for t in args.targets.split(",") if t.strip()]
+    target_dialect = args.target
 
     # 确定每条种子的变异数量：CLI 参数 > config.yaml > 默认值 3
     count = args.count
@@ -214,7 +212,7 @@ def _handle_run(args: argparse.Namespace) -> None:
     result = CampaignRunner().run(
         input_dir=input_dir,
         source_dialect=source_dialect,
-        target_names=target_names,
+        target_dialect=target_dialect,
         count_per_seed=count,
         random_seed=args.seed,
     )
@@ -229,7 +227,10 @@ def _handle_run(args: argparse.Namespace) -> None:
                 tr.target_name, tr.total_executed, tr.success, tr.error, tr.elapsed_ms,
             )
     logger.info("输出目录: %s", result.output_dir)
-    logger.info("运行报告: %s", result.report_path)
+    if result.report_path:
+        logger.info("运行报告: %s", result.report_path)
+    if result.analysis_path:
+        logger.info("分析报告: %s", result.analysis_path)
 
 
 def run(argv: Optional[Sequence[str]] = None) -> None:

@@ -5,7 +5,9 @@ from typing import Dict, List, Tuple
 from .dialect import Dialect
 from .rule_base import TranspilationRule
 from .rules import (
+    AddFromDualRule,
     AddRecursiveKeywordRule,
+    FixAggregateStarRule,
     JsonExtractToJsonValueRule,
     JsonValueToJsonExtractRule,
     RemoveRecursiveKeywordRule,
@@ -79,6 +81,8 @@ def create_default_registry() -> RuleRegistry:
     # SQLite → Oracle
     registry.register(Dialect.SQLITE, Dialect.ORACLE, JsonExtractToJsonValueRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, RemoveRecursiveKeywordRule())
+    registry.register(Dialect.SQLITE, Dialect.ORACLE, AddFromDualRule())
+    registry.register(Dialect.SQLITE, Dialect.ORACLE, FixAggregateStarRule())
 
     # Oracle → SQLite
     registry.register(Dialect.ORACLE, Dialect.SQLITE, JsonValueToJsonExtractRule())

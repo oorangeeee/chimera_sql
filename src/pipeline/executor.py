@@ -126,7 +126,7 @@ class TargetExecutor:
                 executed_sql=sql,
                 status="ok",
                 row_count=len(rows),
-                rows=_rows_to_jsonable(rows),
+                rows=rows_to_jsonable(rows),
                 error=None,
                 elapsed_ms=round(elapsed, 2),
                 mutation_strategies=mutation_strategies,
