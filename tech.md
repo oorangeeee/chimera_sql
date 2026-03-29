@@ -183,8 +183,10 @@ tree.sql(dialect=target_dialect)                 ← 阶段3: 目标方言生成
 - **具体规则实现:**
   - `JsonExtractToJsonValueRule`: `json_extract()` → `JSON_VALUE()`（SQLite→Oracle）
   - `JsonValueToJsonExtractRule`: `JSON_VALUE()` → `json_extract()`（Oracle→SQLite）
-  - `RemoveRecursiveKeywordRule`: 移除 `WITH RECURSIVE` 的 `RECURSIVE` 关键字（SQLite→Oracle）
+  - `RemoveRecursiveKeywordRule`: 移除 `WITH RECURSIVE` 的 `RECURSIVE` 关键字，同时补回递归 CTE 列名列表并强制 UNION ALL（SQLite→Oracle）
   - `AddRecursiveKeywordRule`: 通过启发式检测（UNION ALL + 自引用）为递归 CTE 添加 `RECURSIVE`（Oracle→SQLite）
+  - `AddFromDualRule`: 为无 FROM 子句的标量子查询补 `FROM DUAL`，并展开 GROUP BY 中的标量子查询（SQLite→Oracle）
+  - `FixAggregateStarRule`: 将 `MAX(*)/MIN(*)/SUM(*)/AVG(*)` 中的 `*` 替换为 `1`（SQLite→Oracle）
   - `ExceptToMinusRule` / `MinusToExceptRule`: EXCEPT↔MINUS 转换（可选，默认不启用，Oracle 21c 已支持 EXCEPT）
 - **RuleRegistry**: 按 `(source_dialect, target_dialect)` 方向管理有序规则链，支持动态注册。
 - **SQLTranspiler**: 编排器，协调解析→规则链→生成的完整流程；提供 `transpile()` 和 `transpile_batch()` 接口。
@@ -197,8 +199,32 @@ tree.sql(dialect=target_dialect)                 ← 阶段3: 目标方言生成
 | COALESCE ↔ NVL | ✅ | — |
 | UPPER/LOWER/LENGTH/SUBSTR | ✅ | — |
 | json_extract() → JSON_VALUE() | ❌ | ✅ |
-| WITH RECURSIVE → WITH | ❌ | ✅ |
+| WITH RECURSIVE → WITH | 部分（仅移除关键字） | ✅（同时补列名列表 + 强制 UNION ALL） |
 | EXCEPT ↔ MINUS | 部分 | 可选 |
+| 标量子查询 FROM DUAL（ORA-00923） | ❌ | ✅ |
+| GROUP BY 标量子查询展开（ORA-22818） | ❌ | ✅ |
+| 递归 CTE 列名列表（ORA-32039） | ❌ | ✅ |
+| 递归 CTE 强制 UNION ALL（ORA-32040） | ❌ | ✅ |
+| MAX(*)/MIN(*)/SUM(*)/AVG(*)（ORA-00936） | ❌ | ✅ |
+
+**SQLGlot 关键限制与应对:**
+
+在 SQLite→Oracle 转译实践中，发现 SQLGlot 存在以下限制，需要自定义规则补充：
+
+1. **CTE 列名列表丢弃**: SQLGlot 在序列化 SQLite 方言时会丢弃 CTE 的列名列表（抛出 "Named columns are not supported in table alias" 警告）。Oracle 要求递归 CTE 必须有列名列表（ORA-32039），因此 `RemoveRecursiveKeywordRule` 在移除 RECURSIVE 关键字时会从第一个 SELECT 的 expressions 中提取列名并重建 TableAlias。
+2. **AST 属性命名不一致**: SQLGlot 的 FROM 子句存储在 `node.args["from_"]`（注意下划线），而非直观的 `"from"`。自定义规则需使用正确的属性键访问。
+3. **聚合函数 `*` 参数位置**: `MAX(*)` 中 `*` 存储在 `node.this`（`exp.Star` 类型），而非 `node.expressions` 列表。这与 `COUNT(*)` 的存储方式一致，但需要分别处理，因为 COUNT(*) 在所有方言中合法，而 MAX(*) 等在 Oracle 中不合法。
+
+**SQLite→Oracle 默认规则链执行顺序:**
+
+```
+JsonExtractToJsonValueRule      — JSON 函数名映射
+RemoveRecursiveKeywordRule      — RECURSIVE 关键字 + CTE 列名 + UNION ALL 修复
+AddFromDualRule                 — 标量子查询 FROM DUAL 补全 + GROUP BY 子查询展开
+FixAggregateStarRule            — MAX(*)/MIN(*)/SUM(*)/AVG(*) → MAX(1) 等
+```
+
+规则按注册顺序依次执行，每条规则接收前一条规则的输出 AST，形成管道式处理。
 
 **容错设计（面向模糊测试场景）:**
 
@@ -209,7 +235,7 @@ tree.sql(dialect=target_dialect)                 ← 阶段3: 目标方言生成
 
 **设计模式:** 门面模式 (Facade Pattern) + 编排器模式 (Orchestrator)
 
-**设计目的:** 将变异引擎、方言转译器、数据库连接器三大组件串联为端到端流水线，用户一条命令即可完成"种子 SQL → AST 变异 → 方言转译 → 多数据库执行 → 生成报告"。
+**设计目的:** 将变异引擎、方言转译器、数据库连接器三大组件串联为端到端流水线，用户一条命令即可完成"种子 SQL → AST 变异 → 方言转译 → 单目标数据库执行 → 分析报告"。
 
 **实现架构:**
 
@@ -217,44 +243,64 @@ tree.sql(dialect=target_dialect)                 ← 阶段3: 目标方言生成
 src/pipeline/
 ├── target.py          # TargetDatabase 定义 + 从 config.yaml 加载
 ├── executor.py        # TargetExecutor 单目标 SQL 执行器
-├── runner.py          # CampaignRunner 流水线编排器（核心）
-└── report.py          # CampaignReport 总报告生成
+└── runner.py          # CampaignRunner 流水线编排器（核心）+ CampaignReport 报告生成
 ```
 
 **核心流程（CampaignRunner.run）:**
 
+流水线采用**单目标模式**，每次运行只处理一个目标数据库。目标方言通过 `-t/--target` 参数直接指定，流水线自动从 `config.yaml` 的 `targets` 节匹配第一个方言一致的目标。
+
 ```
 1. 校验输入目录、收集 .sql 种子文件
 2. **方言兼容性校验**: 通过 `DialectDetector` 检测种子 SQL 是否与源方言兼容，不兼容时拒绝执行
-3. 从 config.yaml targets 节加载目标数据库列表
-4. 映射源方言到 Dialect 枚举
+3. 根据 target_dialect 从 config.yaml 自动匹配目标（_match_target）
 4. 构建输出根目录 result/run_{timestamp}/
 
-5. FOR EACH target:
-   5a. 构建 CapabilityProfile.from_dialect_version(target.dialect, target.version)
-   5b. 构建 MutationEngine(profile, registry, rng)
-   5c. 构建 SQLTranspiler()
-   5d. 尝试 TargetExecutor(target).connect()
-       → 连接失败则标记 skipped，跳过该目标
+5. 构建目标能力画像 + 变异引擎 + 转译器
+6. 尝试连接目标数据库 → 失败则标记 skipped 并返回
 
-   5e. FOR EACH seed SQL:
-       - engine.mutate_many(sql, seed_file, count) → List[MutationResult]
-       - FOR EACH mutation:
-           · transpiler.transpile(mutation.sql, source, target_dialect)
-           · 写入变异后 SQL 到 output/{target_name}/{relative}_mut{N}.sql
-           · executor.execute_one(transpiled_sql, metadata)
-           · 收集 SQLExecutionResult
+7. FOR EACH seed SQL:
+   - engine.mutate_many(sql, seed_file, count) → List[MutationResult]
+   - FOR EACH mutation:
+     · 源方言 ≠ 目标方言时执行转译: transpiler.transpile(mutation.sql, source, target_dialect)
+     · 源方言 = 目标方言时跳过转译（同方言回归模式）
+     · 写入变异后 SQL 到 output/{target_name}/{relative}_mut{N}.sql
+     · executor.execute_one(transpiled_sql, metadata)
+     · 收集 SQLExecutionResult
 
-   5f. 写入 execution.json（该目标全部执行记录）
-   5g. executor.close()
+8. 写入 execution.json（该目标全部执行记录）
+9. executor.close()
 
-6. 生成总报告 report.md + report.json
-7. 返回 CampaignResult
+10. **用户交互**: 若存在执行错误，提示用户选择是否保存结果
+    - 保存: 保留输出目录，继续生成报告
+    - 丢弃: 删除输出目录，直接返回
+
+11. 生成运行报告 report.md + report.json
+12. 调用分析模块生成 analysis.md + analysis.json
+13. 返回 CampaignResult
 ```
+
+**同方言回归模式:**
+
+当 `-s` 和 `-t` 指定相同方言时（如 `run data/seeds -s sqlite -t sqlite`），流水线自动跳过转译阶段，仅执行"变异 → 执行 → 分析"。此模式用于验证变异引擎本身的正确性，排除转译因素的干扰。
+
+**用户交互设计:**
+
+执行完所有 SQL 后，若存在执行错误，流水线通过 stderr 输出错误摘要并等待用户确认：
+
+```
+  执行过程中出现 N 个错误。
+
+  是否保存本次结果？[y/N]:
+```
+
+- 选择保存（y/yes）：保留输出目录，生成运行报告和分析报告
+- 选择丢弃（n/其他）：删除整个输出目录，不生成报告
+- 若无错误：直接保存并生成报告，无需询问
 
 **容错设计:**
 
-- 目标数据库连接失败时自动跳过该目标，不中断其他目标的处理。
+- 目标数据库连接失败时自动跳过该目标，不中断流水线。
 - 单条 SQL 变异失败时跳过该种子，不影响后续种子。
 - 转译失败时使用变异后的原始 SQL（带警告标记），继续执行。
 - 单条 SQL 执行失败记录错误信息，不中断批处理。
@@ -279,11 +325,13 @@ targets:
 result/run_{timestamp}/
 ├── {target_name}/
 │   ├── {seed_category}/
-│   │   ├── {seed}_mut01.sql     # 已转译、可直接执行的 SQL
+│   │   ├── {seed}_mut01.sql     # 已转译（或原始）、可直接执行的 SQL
 │   │   └── ...
 │   └── execution.json           # 该目标全部 SQL 执行结果
-├── report.md                    # 总体报告（人类可读）
-└── report.json                  # 总体报告（机器可读）
+├── report.md                    # 运行报告（人类可读）
+├── report.json                  # 运行报告（机器可读）
+├── analysis.md                  # 分析报告（多维度统计分析）
+└── analysis.json                # 分析报告（机器可读）
 ```
 
 ### 2.5 方言兼容性检测器 (Dialect Detector)
@@ -334,6 +382,74 @@ _INCOMPATIBLE["mysql"] = _ORACLE_SIGNATURES + _SQLITE_SIGNATURES  # 示例
 
 - ConfigLoader 类负责在系统启动时读取 config.yaml。
 - 通过 Python 模块级别的单例特性或 __new__ 方法保证实例唯一性。
+
+### 2.7 分析模块 (Analyzer Module)
+
+**设计目的:** 对模糊测试执行结果进行多维度统计分析，生成结构化分析报告，帮助研究者快速定位问题模式和评估模糊测试质量。
+
+**实现架构:**
+
+```
+src/analyzer/
+├── __init__.py      # 导出 FuzzAnalyzer, AnalysisResult, AnalysisReport
+├── analyzer.py      # FuzzAnalyzer 分析器（核心）
+├── result.py        # AnalysisResult + 子数据类
+└── report.py        # AnalysisReport 报告生成器
+```
+
+**分析流程:**
+
+```
+List[SQLExecutionResult]
+    │
+    ▼
+FuzzAnalyzer.analyze(results)
+    │
+    ├── _analyze_errors()      → List[ErrorCategory]     错误分类统计
+    ├── _analyze_strategies()  → List[StrategyStats]     变异策略效果
+    ├── _analyze_transpile()   → TranspileStats          转译效果
+    ├── _analyze_performance() → List[PerformanceEntry]  性能分析（Top-5）
+    └── _analyze_seed_coverage()→ List[SeedCoverage]     种子覆盖
+    │
+    ▼
+AnalysisResult
+    │
+    ▼
+AnalysisReport.generate(output_dir, analysis, ...)
+    │
+    ├── analysis.md      # Markdown 报告
+    └── analysis.json    # JSON 报告（含 to_dict() 序列化）
+```
+
+**分析维度:**
+
+| 维度 | 内容 | 数据类 |
+|------|------|--------|
+| **执行成功率** | 成功/失败/总数/成功率/总耗时/平均耗时 | `AnalysisResult` |
+| **错误分类** | 按正则模式分类（表不存在、列不存在、语法错误等），给出 Top-N 和示例 | `ErrorCategory` |
+| **变异策略效果** | 各策略的触发次数、成功数、失败数、成功率 | `StrategyStats` |
+| **转译效果** | 应用转译规则的 SQL 数量、各规则触发次数、转译后成功/失败率 | `TranspileStats` |
+| **性能分析** | 最慢 Top-5 SQL 文件及其耗时和状态 | `PerformanceEntry` |
+| **种子覆盖** | 每条种子产出的变异数、成功/失败比例 | `SeedCoverage` |
+
+**错误分类模式（按优先级匹配）:**
+
+| 分类 | 匹配模式（正则） |
+|------|----------------|
+| 表不存在 | `table.*does not exist`, `no such table`, `ORA-00942` |
+| 列不存在 | `column.*does not exist`, `no such column`, `ORA-00904` |
+| 语法错误 | `syntax error`, `ORA-00900`, `ORA-00933` |
+| 类型不匹配 | `type mismatch`, `datatype mismatch`, `ORA-00932` |
+| 唯一约束冲突 | `unique constraint`, `duplicate key`, `ORA-00001` |
+| 连接错误 | `connection`, `ORA-12154`, `ORA-12514` |
+| 权限不足 | `permission`, `insufficient privileges`, `ORA-01031` |
+| 非空约束冲突 | `cannot be null`, `NOT NULL constraint`, `ORA-01400` |
+| 函数不存在 | `no such function`, `undefined function` |
+| 其他错误 | `.*`（兜底） |
+
+**循环导入处理:**
+
+`analyzer.py` 需要引用 `SQLExecutionResult`（定义在 `pipeline/executor.py`），而 `pipeline/runner.py` 又引用 `analyzer` 模块。通过 `typing.TYPE_CHECKING` 守卫解决：`analyzer.py` 中仅在类型注解中导入 `SQLExecutionResult`，运行时不产生实际导入。
 
 ## 3. 测试数据库初始化流水线
 
@@ -415,7 +531,8 @@ main.py              → 薄入口（仅 import + 调用）
         │     └── src/core/transpiler/report.py    → 转译报告生成
         └── src/pipeline/runner.py                 → 端到端流水线编排
               ├── src/pipeline/executor.py          → 单目标执行器
-              └── src/pipeline/report.py            → 运行报告生成
+              ├── src/analyzer/analyzer.py          → 多维度结果分析
+              └── src/analyzer/report.py            → 分析报告生成
 ```
 
 `main.py` 仅包含 `from src.cli import run` 和 `run()` 调用，所有业务逻辑和辅助函数均位于 `src/` 内。验证错误（目录不存在、不支持的方言等）由业务模块抛出 `ValueError`，CLI 层统一捕获并输出日志。
@@ -462,10 +579,10 @@ python main.py transpile <输入目录> -s <源方言> -t <目标方言>
 
 ### 4.4 `run` — 端到端模糊测试流水线
 
-由 `CampaignRunner` 类编排，串联变异引擎、方言转译器、数据库连接器，实现完整的端到端模糊测试流程：读取种子 SQL → AST 变异 → 方言转译 → 多数据库执行 → 生成运行报告。
+由 `CampaignRunner` 类编排，串联变异引擎、方言转译器、数据库连接器和分析模块，实现完整的端到端模糊测试流程：读取种子 SQL → AST 变异 → 方言转译（可选）→ 单目标数据库执行 → 多维度分析报告。
 
 ```bash
-python main.py run <输入目录> -s <源方言> [--targets t1,t2] [-n <数量>] [--seed <随机种子>]
+python main.py run <输入目录> -s <源方言> -t <目标方言> [-n <数量>] [--seed <随机种子>]
 ```
 
 **参数说明:**
@@ -473,19 +590,36 @@ python main.py run <输入目录> -s <源方言> [--targets t1,t2] [-n <数量>]
 | 参数 | 必需 | 说明 |
 |------|------|------|
 | `<输入目录>` | 是 | 包含 .sql 种子文件的目录 |
-| `-s / --source` | 是 | 种子 SQL 的方言 |
-| `--targets` | 否 | 逗号分隔的目标名称（默认 config 中所有 targets） |
+| `-s / --source` | 是 | 种子 SQL 的方言（`sqlite` 或 `oracle`） |
+| `-t / --target` | 是 | 目标 SQL 的方言（与源方言相同时跳过转译） |
 | `-n / --count` | 否 | 每条种子变异数量（CLI > config > 3） |
 | `--seed` | 否 | 随机种子 |
+
+**目标匹配:** `-t` 指定方言后，流水线自动从 `config.yaml` 的 `targets` 节匹配第一个方言一致的目标数据库。无需手动指定目标名称。
 
 **输出目录命名规则:** `result/run_{时间戳}/`
 
 **报告内容:**
-- **report.md**: 运行概览（源方言、目标列表、种子数、变异数）→ 各目标汇总表格（成功/失败/跳过）→ 错误 Top-10
-- **report.json**: 完整结构化数据（含各目标汇总和详细执行记录路径引用）
+- **report.md**: 运行概览（源方言、目标方言、种子数、变异数）→ 执行汇总表格（成功/失败/跳过）→ 错误 Top-10
+- **report.json**: 完整结构化运行数据
+- **analysis.md**: 多维度分析报告（执行成功率、错误分类、变异策略效果、转译效果、性能 Top-5、种子覆盖）
+- **analysis.json**: 完整结构化分析数据
 - **execution.json** (per-target): 该目标所有 SQL 的详细执行记录
 
-**容错设计:** 目标连接失败自动跳过（标记 skipped）；变异失败跳过该种子；转译失败使用原始 SQL；执行失败记录错误继续处理。
+**容错设计:** 目标连接失败自动跳过（标记 skipped）；变异失败跳过该种子；转译失败使用原始 SQL；执行失败记录错误继续处理。存在执行错误时，提示用户选择是否保存结果。
+
+**示例:**
+
+```bash
+# SQLite 种子变异后直接在 SQLite 执行（同方言回归，跳过转译）
+python main.py run data/seeds -s sqlite -t sqlite -n 2
+
+# SQLite 种子变异后转译为 Oracle 并执行
+python main.py run data/seeds -s sqlite -t oracle -n 2
+
+# 指定随机种子（可复现）
+python main.py run data/seeds -s sqlite -t oracle -n 5 --seed 42
+```
 
 ## 5. 关键技术实现原理
 
