@@ -19,6 +19,7 @@ from src.core.mutator import (
     create_default_registry,
 )
 from src.core.transpiler import Dialect, SQLTranspiler
+from src.utils.dialect_detector import DialectDetector
 from src.utils.logger import get_logger
 
 from .executor import TargetExecutor, SQLExecutionResult
@@ -131,6 +132,9 @@ class CampaignRunner:
         seed_files = sorted(input_dir.rglob("*.sql"))
         if not seed_files:
             raise ValueError(f"未找到 .sql 种子文件: {input_dir}")
+
+        # 校验种子 SQL 与源方言兼容
+        self._validate_source_dialect(seed_files, input_dir, source_dialect)
 
         # 加载目标列表
         targets = load_targets(target_names)
@@ -341,6 +345,27 @@ class CampaignRunner:
                 f"不支持的方言: '{dialect_str}'。支持的方言: {supported}"
             )
         return dialect
+
+    @staticmethod
+    def _validate_source_dialect(
+        seed_files: List[Path],
+        input_dir: Path,
+        dialect: str,
+    ) -> None:
+        """校验所有种子 SQL 与源方言兼容，不兼容时抛 ValueError。"""
+        sql_map = {
+            str(p.relative_to(input_dir)): p.read_text(encoding="utf-8")
+            for p in seed_files
+        }
+        incompatible = DialectDetector.detect_incompatible(sql_map, dialect)
+        if incompatible:
+            lines = "\n".join(
+                f"  - {item['file']}: {item['reason']}" for item in incompatible
+            )
+            raise ValueError(
+                f"以下种子 SQL 与方言 '{dialect}' 不兼容:\n{lines}\n"
+                f"共 {len(incompatible)} 个文件不兼容，请确认种子 SQL 的方言是否正确。"
+            )
 
     @staticmethod
     def _build_target_report_data(

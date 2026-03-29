@@ -76,6 +76,7 @@ src/core/mutator/
 
 **单条 SQL 变异流程（MutationEngine.mutate_one）:**
 
+0. **方言兼容性校验**: 批量读取种子 SQL，通过 `DialectDetector` 检测是否包含与目标方言不兼容的语法特征（如 SQLite 的 `WITH RECURSIVE` 用于 Oracle）。不兼容时列出所有问题文件并拒绝执行。
 1. `sqlglot.parse_one(sql)` 解析为 AST
 2. `tree.walk()` 遍历收集所有 AST 节点
 3. 对每个 (策略, 节点) 组合调用 `RuleGate.can_apply()` 门控过滤
@@ -120,7 +121,8 @@ src/core/mutator/
 |------|---------|
 | SQLGlot 已支持方言 + 已有 Python driver | **零代码** — 自动提取画像即可运行 |
 | 需补充版本特性或 expected errors | **仅 YAML** — 约 30 行覆盖配置 |
-| 全新数据库 | 1 个 YAML 画像 + 1 个 connector 类（~50 行） |
+| 全新数据库 | 1 个 YAML 画像 + 1 个 connector 类（~50 行） + 方言检测器签名（1 行映射） |
+| 需要方言转译 | 额外：转译规则类 + 规则注册 + Dialect 枚举 |
 
 完整调研证据、业界工具对比及策略清单见 `core.md`。
 配置模型详细设计（Profile + Policy + Campaign）见 `core.md`。
@@ -132,6 +134,9 @@ src/core/mutator/
 **设计目的:** 将任意合法 SQL 从源数据库方言转换为目标数据库方言，补充 SQLGlot 未覆盖的方言差异。
 
 **两阶段转译管线:**
+
+1. **方言兼容性校验**: 批量读取种子 SQL，通过 `DialectDetector` 检测是否与源方言兼容。不兼容时拒绝执行。
+2. 解析 → 规则链变换 → 目标方言生成（详见下方流程图）
 
 ```
 输入 SQL (字符串)
@@ -203,8 +208,9 @@ src/pipeline/
 
 ```
 1. 校验输入目录、收集 .sql 种子文件
-2. 从 config.yaml targets 节加载目标数据库列表
-3. 映射源方言到 Dialect 枚举
+2. **方言兼容性校验**: 通过 `DialectDetector` 检测种子 SQL 是否与源方言兼容，不兼容时拒绝执行
+3. 从 config.yaml targets 节加载目标数据库列表
+4. 映射源方言到 Dialect 枚举
 4. 构建输出根目录 result/run_{timestamp}/
 
 5. FOR EACH target:
@@ -263,7 +269,45 @@ result/run_{timestamp}/
 └── report.json                  # 总体报告（机器可读）
 ```
 
-### 2.5 配置管理 (Configuration)
+### 2.5 方言兼容性检测器 (Dialect Detector)
+
+**设计模式:** 签名匹配 (Signature Matching) + 反向排除 (Negative Exclusion)
+
+**设计目的:** 在 `mutate`、`transpile`、`run` 三个命令执行前，自动检测种子 SQL 是否与指定方言兼容。若发现不兼容的方言特征（如 SQLite 的 `WITH RECURSIVE` 用于 Oracle），列出所有不兼容文件并拒绝执行，避免产出无效 SQL。
+
+**核心策略 — 反向排除:**
+
+不判断 SQL 属于哪种方言，而是检查 SQL 中是否存在目标方言**不支持的**其他方言特征。无方言特征的通用 SQL 视为兼容所有方言。检测前会剥离注释（`--`、`/* */`）和字符串字面量（`'...'`），避免其中关键字导致误报。
+
+**API:**
+
+```python
+# 单条检测
+DialectDetector.is_compatible(sql: str, dialect: str) -> bool
+
+# 批量检测（用于 batch_runner）
+DialectDetector.detect_incompatible(sql_map: Dict[str, str], dialect: str) -> List[Dict[str, str]]
+```
+
+**扩展新数据库:**
+
+仅需在 `src/utils/dialect_detector.py` 的 `_INCOMPATIBLE` 字典中添加一行映射：
+
+```python
+_INCOMPATIBLE["mysql"] = _ORACLE_SIGNATURES + _SQLITE_SIGNATURES  # 示例
+```
+
+无需改动任何检测逻辑代码，`mutate -d mysql`、`transpile -s mysql`、`run -s mysql` 自动获得校验能力。
+
+**校验集成点:**
+
+| 命令 | 校验时机 | 校验方言 | 文件 |
+|------|---------|---------|------|
+| `mutate -d <dialect>` | 变异前 | `-d` 指定的方言 | `mutator/batch_runner.py` |
+| `transpile -s <source>` | 转译前 | `-s` 指定的源方言 | `transpiler/batch_runner.py` |
+| `run -s <source>` | 流水线启动前 | `-s` 指定的源方言 | `pipeline/runner.py` |
+
+### 2.6 配置管理 (Configuration)
 
 **设计模式:** 单例模式 (Singleton Pattern)
 
