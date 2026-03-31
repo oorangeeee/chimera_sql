@@ -28,7 +28,7 @@ from src.utils.dialect_detector import DialectDetector
 from src.utils.logger import get_logger
 
 from .executor import TargetExecutor, SQLExecutionResult
-from .target import TargetDatabase, load_targets
+from .target import DatabaseEntry, resolve_database
 
 logger = get_logger("pipeline.runner")
 
@@ -80,7 +80,9 @@ class CampaignRunner:
         self,
         input_dir: Path,
         source_dialect: str,
+        source_version: str,
         target_dialect: str,
+        target_version: str,
         mode: str = "fuzz",
         count_per_seed: int = 3,
         random_seed: Optional[int] = None,
@@ -90,7 +92,9 @@ class CampaignRunner:
         Args:
             input_dir: SQL 输入目录。
             source_dialect: 源 SQL 的方言（如 "sqlite"、"oracle"）。
+            source_version: 源数据库版本标识。
             target_dialect: 目标 SQL 的方言（如 "sqlite"、"oracle"）。
+            target_version: 目标数据库版本标识。
             mode: 流水线模式，"fuzz"（转译→变异→执行→分析）或 "exec"（转译→执行→分析）。
             count_per_seed: 每条种子生成的变异数量（仅 fuzz 模式）。
             random_seed: 随机种子（可选，仅 fuzz 模式）。
@@ -119,7 +123,7 @@ class CampaignRunner:
             sql_files, input_dir, source_dialect,
         )
 
-        target = self._match_target(target_d)
+        target_db = self._resolve_database(target_dialect)
 
         # ── 构建输出目录 ──
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -130,22 +134,22 @@ class CampaignRunner:
         if mode == "fuzz":
             logger.info(
                 "流水线启动 [fuzz]: 源方言=%s | 目标方言=%s | 目标=%s | %d 种子 | 每种子 %d 变异",
-                source_dialect, target_dialect, target.name, len(sql_files), count_per_seed,
+                source_dialect, target_dialect, target_db.name, len(sql_files), count_per_seed,
             )
         else:
             logger.info(
                 "流水线启动 [exec]: 源方言=%s | 目标方言=%s | 目标=%s | %d SQL 文件",
-                source_dialect, target_dialect, target.name, len(sql_files),
+                source_dialect, target_dialect, target_db.name, len(sql_files),
             )
 
         # ── 按 mode 分发执行 ──
         if mode == "exec":
             run_result, report_data, all_exec_results = self._run_exec(
-                target, source, target_d, sql_files, sql_map, input_dir, output_dir,
+                target_db, source, target_d, target_version, sql_files, sql_map, input_dir, output_dir,
             )
         else:
             run_result, report_data, all_exec_results = self._run_fuzz(
-                target, source, target_d, sql_files, sql_map, input_dir, output_dir,
+                target_db, source, target_d, target_version, sql_files, sql_map, input_dir, output_dir,
                 count_per_seed, random_seed,
             )
 
@@ -203,9 +207,10 @@ class CampaignRunner:
 
     def _run_fuzz(
         self,
-        target: TargetDatabase,
+        target_db: DatabaseEntry,
         source: Dialect,
         target_dialect: Dialect,
+        target_version: str,
         sql_files: List[Path],
         sql_map: Dict[str, str],
         input_dir: Path,
@@ -216,16 +221,18 @@ class CampaignRunner:
         """转译 → 变异 → 执行。"""
         t_start = time.perf_counter()
         logger.info("=" * 50)
-        logger.info("处理目标: %s (dialect=%s, db_type=%s)", target.name, target.dialect, target.db_type)
+        logger.info("处理目标: %s (dialect=%s, db_type=%s)", target_db.name, target_db.sqlglot_dialect, target_db.db_type)
 
-        conn = self._connect_target(target, output_dir)
+        conn = self._connect_target(target_db, target_version, output_dir)
         if conn is None:
-            return _skip_target(target, "连接失败（详见上方日志）", t_start)
+            return _skip_target(target_db, "连接失败（详见上方日志）", t_start)
 
-        executor, target_output = conn
+        executor, target_output, actual_version = conn
         transpiler = SQLTranspiler()
 
-        profile = CapabilityProfile.from_dialect_version(target.dialect, target.version or None)
+        profile, capability_source = CapabilityProfile.from_dialect_version(
+            target_db.sqlglot_dialect, target_version,
+        )
         registry = create_default_registry()
         rng = Random(random_seed) if random_seed is not None else Random()
         engine = MutationEngine(profile, registry, rng, source_dialect=target_dialect.value)
@@ -269,13 +276,19 @@ class CampaignRunner:
         finally:
             executor.close()
 
-        return _build_target_result(target, target_output, all_exec_results, t_start)
+        return _build_target_result(
+            target_db, target_output, all_exec_results, t_start,
+            target_version=target_version,
+            actual_version=actual_version,
+            capability_source=capability_source,
+        )
 
     def _run_exec(
         self,
-        target: TargetDatabase,
+        target_db: DatabaseEntry,
         source: Dialect,
         target_dialect: Dialect,
+        target_version: str,
         sql_files: List[Path],
         sql_map: Dict[str, str],
         input_dir: Path,
@@ -284,13 +297,13 @@ class CampaignRunner:
         """转译 → 执行（无变异）。"""
         t_start = time.perf_counter()
         logger.info("=" * 50)
-        logger.info("处理目标: %s (dialect=%s, db_type=%s)", target.name, target.dialect, target.db_type)
+        logger.info("处理目标: %s (dialect=%s, db_type=%s)", target_db.name, target_db.sqlglot_dialect, target_db.db_type)
 
-        conn = self._connect_target(target, output_dir)
+        conn = self._connect_target(target_db, target_version, output_dir)
         if conn is None:
-            return _skip_target(target, "连接失败（详见上方日志）", t_start)
+            return _skip_target(target_db, "连接失败（详见上方日志）", t_start)
 
-        executor, target_output = conn
+        executor, target_output, actual_version = conn
         transpiler = SQLTranspiler()
 
         all_exec_results: List[SQLExecutionResult] = []
@@ -320,7 +333,12 @@ class CampaignRunner:
         finally:
             executor.close()
 
-        return _build_target_result(target, target_output, all_exec_results, t_start)
+        return _build_target_result(
+            target_db, target_output, all_exec_results, t_start,
+            target_version=target_version,
+            actual_version=actual_version,
+            capability_source="",
+        )
 
     def _run_analysis(
         self,
@@ -346,19 +364,36 @@ class CampaignRunner:
 
     @staticmethod
     def _connect_target(
-        target: TargetDatabase, output_dir: Path,
-    ) -> Optional[Tuple[TargetExecutor, Path]]:
-        """连接目标数据库，成功返回 (executor, target_output)，失败返回 None。"""
-        executor = TargetExecutor(target)
+        target_db: DatabaseEntry, target_version: str, output_dir: Path,
+    ) -> Optional[Tuple[TargetExecutor, Path, str]]:
+        """连接目标数据库，成功返回 (executor, target_output, actual_version)，失败返回 None。"""
+        executor = TargetExecutor(target_db)
         try:
             executor.connect()
         except Exception as e:
-            logger.warning("跳过目标 %s: 连接失败: %s", target.name, e)
+            logger.warning("跳过目标 %s: 连接失败: %s", target_db.name, e)
             return None
 
-        target_output = output_dir / target.name
+        # 查询实际数据库版本并与用户指定版本对比
+        actual_version = executor.get_version()
+        if actual_version and actual_version != target_version:
+            logger.warning(
+                "数据库版本不一致: 用户指定 '%s'，实际 '%s'。",
+                target_version, actual_version,
+            )
+            try:
+                choice = input("  是否继续执行？[y/N]: ").strip().lower()
+                if choice not in ("y", "yes"):
+                    executor.close()
+                    return None
+            except (EOFError, KeyboardInterrupt):
+                sys.stderr.write("\n")
+                executor.close()
+                return None
+
+        target_output = output_dir / target_db.name
         target_output.mkdir(parents=True, exist_ok=True)
-        return executor, target_output
+        return executor, target_output, actual_version
 
     @staticmethod
     def _resolve_dialect(dialect_str: str) -> Dialect:
@@ -372,33 +407,25 @@ class CampaignRunner:
         return dialect
 
     @staticmethod
-    def _match_target(target_dialect: Dialect) -> TargetDatabase:
-        """根据目标方言从 config targets 中匹配第一个 dialect 一致的目标。"""
-        targets = load_targets()
-        for t in targets:
-            if t.dialect.lower() == target_dialect.value.lower():
-                return t
-        available = [t.name for t in targets]
-        raise ValueError(
-            f"config.yaml targets 中没有方言为 '{target_dialect.value}' 的目标。"
-            f"可用目标: {available}"
-        )
+    def _resolve_database(dialect: str) -> DatabaseEntry:
+        """根据方言名称查找已注册的数据库。"""
+        return resolve_database(dialect)
 
 
 # ── 模块级辅助函数 ──
 
 def _skip_target(
-    target: TargetDatabase, reason: str, t_start: float,
+    target_db: DatabaseEntry, reason: str, t_start: float,
 ) -> Tuple[TargetRunResult, Dict[str, Any], List[SQLExecutionResult]]:
     """构建跳过目标的结果元组。"""
     elapsed = (time.perf_counter() - t_start) * 1000
     run_result = TargetRunResult(
-        target_name=target.name,
+        target_name=target_db.name,
         skipped=True,
         skip_reason=reason,
         elapsed_ms=round(elapsed, 1),
     )
-    report_data = _build_target_report_data(target, run_result, [])
+    report_data = _build_target_report_data(target_db, run_result, [])
     return run_result, report_data, []
 
 
@@ -433,10 +460,13 @@ def _prompt_save(error_count: int) -> bool:
 
 
 def _build_target_result(
-    target: TargetDatabase,
+    target_db: DatabaseEntry,
     target_output: Path,
     all_exec_results: List[SQLExecutionResult],
     t_start: float,
+    target_version: str = "",
+    actual_version: str = "",
+    capability_source: str = "",
 ) -> Tuple[TargetRunResult, Dict[str, Any], List[SQLExecutionResult]]:
     """写入 execution.json 并构建返回值。"""
     target_elapsed = (time.perf_counter() - t_start) * 1000
@@ -444,10 +474,13 @@ def _build_target_result(
     error_count = sum(1 for r in all_exec_results if r.status == "error")
 
     execution_payload = {
-        "target": target.name,
-        "db_type": target.db_type,
-        "dialect": target.dialect,
-        "version": target.version,
+        "target": target_db.name,
+        "db_type": target_db.db_type,
+        "dialect": target_db.sqlglot_dialect,
+        "version": target_version,
+        "user_specified_version": target_version,
+        "actual_db_version": actual_version,
+        "capability_source": capability_source,
         "total": len(all_exec_results),
         "success": success_count,
         "error": error_count,
@@ -462,31 +495,42 @@ def _build_target_result(
 
     logger.info(
         "目标 %s 完成: %d 执行 | %d 成功 | %d 失败 | 耗时 %.0f ms",
-        target.name, len(all_exec_results), success_count, error_count, target_elapsed,
+        target_db.name, len(all_exec_results), success_count, error_count, target_elapsed,
     )
 
     run_result = TargetRunResult(
-        target_name=target.name,
+        target_name=target_db.name,
         total_executed=len(all_exec_results),
         success=success_count,
         error=error_count,
         elapsed_ms=round(target_elapsed, 1),
     )
-    report_data = _build_target_report_data(target, run_result, all_exec_results)
+    report_data = _build_target_report_data(
+        target_db, run_result, all_exec_results,
+        target_version=target_version,
+        actual_version=actual_version,
+        capability_source=capability_source,
+    )
     return run_result, report_data, all_exec_results
 
 
 def _build_target_report_data(
-    target: TargetDatabase,
+    target_db: DatabaseEntry,
     run_result: TargetRunResult,
     exec_results: List[SQLExecutionResult],
+    target_version: str = "",
+    actual_version: str = "",
+    capability_source: str = "",
 ) -> Dict[str, Any]:
     """构建用于报告生成器的目标数据字典。"""
     return {
-        "target_name": target.name,
-        "db_type": target.db_type,
-        "dialect": target.dialect,
-        "version": target.version,
+        "target_name": target_db.name,
+        "db_type": target_db.db_type,
+        "dialect": target_db.sqlglot_dialect,
+        "version": target_version,
+        "user_specified_version": target_version,
+        "actual_db_version": actual_version,
+        "capability_source": capability_source,
         "skipped": run_result.skipped,
         "skip_reason": run_result.skip_reason,
         "total_executed": run_result.total_executed,
@@ -561,6 +605,7 @@ class CampaignReport:
 
         target_names = [t["target_name"] for t in per_target]
         lines.append(f"| 目标数据库 | {', '.join(target_names)} |")
+        lines.append(f"| 能力画像来源 | {', '.join(t.get('capability_source', '') for t in per_target)} |")
         lines.append(f"| 总耗时 | {summary.get('elapsed_ms', 0):.0f} ms |")
         lines.append("")
 
@@ -583,6 +628,14 @@ class CampaignReport:
                     f"| {t.get('error', 0)} | {t.get('elapsed_ms', 0):.0f} |"
                 )
         lines.append("")
+
+        for t in per_target:
+            if t.get("actual_db_version") and t.get("actual_db_version") != t.get("user_specified_version"):
+                lines.append(
+                    f"> **警告:** 实际数据库版本 ({t['actual_db_version']}) "
+                    f"与用户指定版本 ({t['user_specified_version']}) 不一致。"
+                )
+                lines.append("")
 
         # 错误 Top-N
         for t in per_target:
