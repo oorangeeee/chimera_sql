@@ -41,3 +41,7 @@ tests/seed_sql_test/result/*
 
 # Transpilation output
 result/
+
+docs/
+
+PROJECT_STRUCTURE.md
