@@ -98,25 +98,35 @@ class CapabilityProfile:
         cls,
         dialect: str,
         version: Optional[str] = None,
-    ) -> "CapabilityProfile":
+    ) -> tuple:
         """公开入口：SQLGlot 自动提取 + config.yaml profile 合并。
 
         Args:
             dialect: 目标方言名称。
-            version: 可选的数据库版本标识（用于匹配 config.yaml profile）。
+            version: 数据库版本标识（用于匹配 config.yaml profile）。
 
         Returns:
-            合并后的 CapabilityProfile。
+            (CapabilityProfile, capability_source) 元组。
+            capability_source 为 "sqlglot_only" 或 "sqlglot+profile:{name}"。
         """
         profile = cls.from_sqlglot(dialect)
 
         # 尝试从 config.yaml 中查找匹配的 profile 并合并
-        overrides = cls._load_config_overrides(dialect, version)
+        overrides, matched_profile = cls._load_config_overrides(dialect, version)
         if overrides:
             profile = profile.with_overrides(overrides)
             logger.debug("已合并 config.yaml 覆盖: %d 项", len(overrides))
+            capability_source = f"sqlglot+profile:{matched_profile}"
+        else:
+            logger.warning(
+                "mutation.profiles 中未找到 '%s' 版本 '%s' 的精调配置，"
+                "能力画像仅基于 SQLGlot 自动提取。如需精调，请在 config.yaml 的 "
+                "mutation.profiles 中添加对应条目。",
+                dialect, version or "(未指定)",
+            )
+            capability_source = "sqlglot_only"
 
-        return profile
+        return profile, capability_source
 
     def with_overrides(self, overrides: Dict[str, bool]) -> "CapabilityProfile":
         """返回合并覆盖后的新 Profile（不修改原对象）。
@@ -146,19 +156,24 @@ class CapabilityProfile:
     @staticmethod
     def _load_config_overrides(
         dialect: str, version: Optional[str]
-    ) -> Dict[str, bool]:
-        """从 config.yaml mutation.profiles 中加载匹配的覆盖标志。"""
+    ) -> tuple:
+        """从 config.yaml mutation.profiles 中加载匹配的覆盖标志。
+
+        Returns:
+            (overrides_dict, matched_profile_name) 元组。
+            未匹配时返回 ({}, "")。
+        """
         try:
             config = ConfigLoader()
         except FileNotFoundError:
-            return {}
+            return {}, ""
 
         profiles = config.get("mutation.profiles", {})
         if not isinstance(profiles, dict):
-            return {}
+            return {}, ""
 
         # 遍历 profiles，查找 dbms 和 version 匹配的条目
-        for _profile_id, profile_data in profiles.items():
+        for profile_id, profile_data in profiles.items():
             if not isinstance(profile_data, dict):
                 continue
             p_dbms = profile_data.get("dbms", "")
@@ -170,9 +185,9 @@ class CapabilityProfile:
                     overrides[f"feature.{feat}"] = True
                 for feat in profile_data.get("disable_features", []):
                     overrides[f"feature.{feat}"] = False
-                return overrides
+                return overrides, profile_id
 
-        return {}
+        return {}, ""
 
     def __repr__(self) -> str:
         true_count = sum(1 for v in self._flags.values() if v)

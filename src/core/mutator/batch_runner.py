@@ -78,7 +78,7 @@ class BatchMutationRunner:
         sql_map = DialectDetector.validate_sql_files(sql_files, input_dir, dialect)
 
         # 构建能力画像（方言校验在此完成）
-        profile = CapabilityProfile.from_dialect_version(dialect, version)
+        profile, _ = CapabilityProfile.from_dialect_version(dialect, version)
 
         # 构建策略注册表 & 引擎
         registry = create_default_registry()
