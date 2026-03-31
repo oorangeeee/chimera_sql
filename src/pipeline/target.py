@@ -1,82 +1,83 @@
-"""目标数据库定义与加载。
+"""已注册数据库定义与加载。
 
-从 config.yaml 的 targets 节读取目标数据库配置，
-并映射为 TargetDatabase 数据类供流水线使用。
+从 config.yaml 的 databases 节读取项目已对接的数据库类型，
+并提供按方言名称查找的便捷方法。
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from src.utils.config_loader import ConfigLoader
 
 
 @dataclass(frozen=True)
-class TargetDatabase:
-    """目标数据库定义。
+class DatabaseEntry:
+    """项目已对接的数据库类型。
 
     Attributes:
-        name: 配置中的 key，如 "oracle_xe"。
+        name: 配置中的 key，如 "oracle"。
         db_type: ConnectorFactory.create() 参数，如 "oracle" / "sqlite"。
-        dialect: Dialect 枚举值，用于转译和变异能力画像，如 "oracle" / "sqlite"。
-        version: 数据库版本，用于变异能力画像的版本匹配，如 "21c"。
+        sqlglot_dialect: SQLGlot 方言名，用于转译和变异能力画像。
     """
 
     name: str
     db_type: str
-    dialect: str
-    version: str
+    sqlglot_dialect: str
 
 
-def load_targets(names: Optional[List[str]] = None) -> List[TargetDatabase]:
-    """从 config.yaml targets 节加载目标数据库定义。
-
-    Args:
-        names: 要加载的目标名称列表。None 表示加载全部。
+def load_databases() -> Dict[str, DatabaseEntry]:
+    """从 config.yaml databases 节加载全部已注册数据库。
 
     Returns:
-        TargetDatabase 列表。
+        以 name 为 key 的 DatabaseEntry 字典。
 
     Raises:
-        ValueError: targets 节不存在、为空，或指定名称不存在。
+        ValueError: databases 节不存在或为空。
     """
     config = ConfigLoader()
-    targets_raw = config.get("targets")
+    raw = config.get("databases")
 
-    if not targets_raw or not isinstance(targets_raw, dict):
+    if not raw or not isinstance(raw, dict):
         raise ValueError(
-            "config.yaml 中未找到有效的 targets 配置节。"
-            "请参考 config.template.yaml 添加 targets 定义。"
+            "config.yaml 中未找到有效的 databases 配置节。"
+            "请参考 config.template.yaml 添加 databases 定义。"
         )
 
-    # 确定要加载的名称列表
-    if names is None:
-        load_names = list(targets_raw.keys())
-    else:
-        load_names = names
+    if not raw:
+        raise ValueError("databases 列表为空，请指定至少一个已对接的数据库。")
 
-    if not load_names:
-        raise ValueError("目标列表为空，请指定至少一个目标数据库。")
-
-    # 校验所有名称存在
-    missing = [n for n in load_names if n not in targets_raw]
-    if missing:
-        available = list(targets_raw.keys())
-        raise ValueError(
-            f"以下目标名称在 config.yaml 中不存在: {missing}。"
-            f"可用目标: {available}"
-        )
-
-    # 构建 TargetDatabase 列表
-    result: List[TargetDatabase] = []
-    for name in load_names:
-        entry = targets_raw[name]
-        result.append(
-            TargetDatabase(
-                name=name,
-                db_type=entry.get("db_type", ""),
-                dialect=entry.get("dialect", ""),
-                version=entry.get("version", ""),
-            )
+    result: Dict[str, DatabaseEntry] = {}
+    for name, entry in raw.items():
+        if not isinstance(entry, dict):
+            raise ValueError(f"databases.{name} 配置格式错误，应为字典。")
+        result[name] = DatabaseEntry(
+            name=name,
+            db_type=entry.get("db_type", name),
+            sqlglot_dialect=entry.get("sqlglot_dialect", name),
         )
 
     return result
+
+
+def resolve_database(dialect: str) -> DatabaseEntry:
+    """根据方言名称查找已注册的数据库。
+
+    Args:
+        dialect: 方言名称（如 "oracle"、"sqlite"）。
+
+    Returns:
+        匹配的 DatabaseEntry。
+
+    Raises:
+        ValueError: 未找到匹配的已注册数据库。
+    """
+    databases = load_databases()
+    for db in databases.values():
+        if db.name.lower() == dialect.lower():
+            return db
+
+    available = [db.name for db in databases.values()]
+    raise ValueError(
+        f"项目未对接方言为 '{dialect}' 的数据库。"
+        f"已对接的数据库: {available}"
+    )
