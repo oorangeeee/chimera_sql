@@ -9,12 +9,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from src.connector.factory import ConnectorFactory
 from src.connector.base import DBConnector
+from src.connector.factory import ConnectorFactory
 from src.utils.json_utils import rows_to_jsonable
 from src.utils.logger import get_logger
 
-from .target import TargetDatabase
+from .target import DatabaseEntry
 
 logger = get_logger("pipeline.executor")
 
@@ -69,17 +69,17 @@ class SQLExecutionResult:
 class TargetExecutor:
     """连接目标数据库，执行 SQL 列表并记录结果。"""
 
-    def __init__(self, target: TargetDatabase) -> None:
+    def __init__(self, target: DatabaseEntry) -> None:
         """初始化执行器。
 
         Args:
-            target: 目标数据库定义。
+            target: 已注册数据库定义。
         """
         self._target = target
         self._connector: Optional[DBConnector] = None
 
     @property
-    def target(self) -> TargetDatabase:
+    def target(self) -> DatabaseEntry:
         """获取目标数据库定义。"""
         return self._target
 
@@ -91,7 +91,22 @@ class TargetExecutor:
         """
         self._connector = ConnectorFactory.create(self._target.db_type)
         self._connector.connect()
-        logger.info("已连接目标数据库: %s (%s)", self._target.name, self._target.db_type)
+        logger.info(
+            "已连接目标数据库: %s (%s)", self._target.name, self._target.db_type
+        )
+
+    def get_version(self) -> str:
+        """查询数据库实际版本。
+
+        Returns:
+            版本字符串。查询失败时返回空字符串。
+        """
+        assert self._connector is not None, "请先调用 connect() 建立连接"
+        try:
+            return self._connector.get_version()
+        except Exception as e:
+            logger.warning("查询数据库版本失败 [%s]: %s", self._target.name, e)
+            return ""
 
     def execute_one(self, sql: str, metadata: Dict[str, Any]) -> SQLExecutionResult:
         """执行单条 SQL 并返回执行结果。
@@ -137,7 +152,10 @@ class TargetExecutor:
             elapsed = (time.perf_counter() - t0) * 1000
             logger.debug(
                 "%s 执行失败 [%s]: %s | SQL: %s",
-                file_path, self._target.name, e, sql[:200],
+                file_path,
+                self._target.name,
+                e,
+                sql[:200],
             )
             return SQLExecutionResult(
                 file=file_path,
