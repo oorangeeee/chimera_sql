@@ -1,7 +1,6 @@
 """具有控制台和文件输出的日志记录工具。"""
 
 import logging
-from pathlib import Path
 
 from src.utils.constants import PROJECT_ROOT
 
