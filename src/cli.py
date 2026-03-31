@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
-from src.testbed import InitPipeline
-from src.core.transpiler import BatchTranspileRunner, Dialect
 from src.core.mutator import BatchMutationRunner
+from src.core.transpiler import BatchTranspileRunner, Dialect
 from src.pipeline import CampaignRunner
+from src.testbed import InitPipeline
 from src.utils.config_loader import ConfigLoader
 from src.utils.logger import get_logger
 
@@ -19,6 +19,37 @@ logger = get_logger("chimera")
 
 # Dialect 枚举名到值的映射（用于 CLI 参数解析）
 _DIALECT_CHOICES = {d.value: d for d in Dialect}
+
+
+def _parse_dialect_version(raw: str) -> tuple:
+    """解析 dialect:version 格式的参数。
+
+    Args:
+        raw: 原始参数字符串，如 "oracle:21c"。
+
+    Returns:
+        (dialect, version) 元组。
+
+    Raises:
+        ValueError: 格式错误或方言不在 _DIALECT_CHOICES 中。
+    """
+    if ":" not in raw:
+        raise ValueError(
+            f"参数格式错误: '{raw}'。"
+            f"请使用 dialect:version 格式，如 oracle:21c 或 sqlite:3.45.0。"
+        )
+    dialect, version = raw.split(":", 1)
+    dialect = dialect.strip()
+    version = version.strip()
+    if not dialect or not version:
+        raise ValueError(
+            f"参数格式错误: '{raw}'。方言和版本均不能为空。"
+        )
+    if dialect not in _DIALECT_CHOICES:
+        raise ValueError(
+            f"不支持的方言: '{dialect}'。支持的方言: {list(_DIALECT_CHOICES.keys())}"
+        )
+    return dialect, version
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -48,15 +79,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         required=True,
-        choices=list(_DIALECT_CHOICES.keys()),
-        help="源 SQL 方言",
+        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.45.0）",
     )
     tp.add_argument(
         "-t",
         "--target",
         required=True,
-        choices=list(_DIALECT_CHOICES.keys()),
-        help="目标 SQL 方言",
+        help="目标 SQL 方言（格式: dialect:version，如 oracle:21c）",
     )
 
     # mutate 子命令
@@ -72,13 +101,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-d",
         "--dialect",
         required=True,
-        help="目标数据库方言（如 sqlite, oracle）",
-    )
-    mt.add_argument(
-        "-v",
-        "--version",
-        default=None,
-        help="数据库版本（可选，如 21c）",
+        help="目标数据库方言（格式: dialect:version，如 oracle:21c）",
     )
     mt.add_argument(
         "-n",
@@ -107,15 +130,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         required=True,
-        choices=list(_DIALECT_CHOICES.keys()),
-        help="源 SQL 方言",
+        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.45.0）",
     )
     vf.add_argument(
         "-t",
         "--target",
         required=True,
-        choices=list(_DIALECT_CHOICES.keys()),
-        help="目标 SQL 方言",
+        help="目标 SQL 方言（格式: dialect:version，如 oracle:21c）",
     )
     vf.add_argument(
         "--skip-init",
@@ -136,15 +157,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         required=True,
-        choices=list(_DIALECT_CHOICES.keys()),
-        help="源 SQL 方言",
+        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.45.0）",
     )
     rn.add_argument(
         "-t",
         "--target",
         required=True,
-        choices=list(_DIALECT_CHOICES.keys()),
-        help="目标 SQL 方言（与源方言相同时跳过转译）",
+        help="目标 SQL 方言（格式: dialect:version，如 oracle:21c）",
     )
     rn.add_argument(
         "--mode",
@@ -176,9 +195,18 @@ def _handle_init(_args: argparse.Namespace) -> None:
 
 def _handle_transpile(args: argparse.Namespace) -> None:
     """处理 transpile 子命令。"""
+    from src.pipeline import resolve_database
+
     input_dir = Path(args.input_dir)
-    source = _DIALECT_CHOICES[args.source]
-    target = _DIALECT_CHOICES[args.target]
+    source_dialect, source_version = _parse_dialect_version(args.source)
+    target_dialect, target_version = _parse_dialect_version(args.target)
+
+    # 校验方言是否在已注册数据库中
+    resolve_database(source_dialect)
+    resolve_database(target_dialect)
+
+    source = _DIALECT_CHOICES[source_dialect]
+    target = _DIALECT_CHOICES[target_dialect]
 
     result = BatchTranspileRunner().run(input_dir, source, target)
 
@@ -196,16 +224,22 @@ def _handle_transpile(args: argparse.Namespace) -> None:
 
 def _handle_mutate(args: argparse.Namespace) -> None:
     """处理 mutate 子命令。"""
+    from src.pipeline import resolve_database
+
     input_dir = Path(args.input_dir)
-    dialect = args.dialect
-    version = args.version
+    dialect, version = _parse_dialect_version(args.dialect)
+
+    # 校验方言是否在已注册数据库中
+    resolve_database(dialect)
 
     # 确定每条种子的变异数量：CLI 参数 > config.yaml > 默认值 3
     count = args.count
     if count is None:
         try:
             config = ConfigLoader()
-            count = config.get("mutation.policies.balanced_default.max_mutations_per_seed", 3)
+            count = config.get(
+                "mutation.policies.balanced_default.max_mutations_per_seed", 3
+            )
         except FileNotFoundError:
             count = 3
 
@@ -231,11 +265,19 @@ def _handle_mutate(args: argparse.Namespace) -> None:
 
 def _handle_verify(args: argparse.Namespace) -> None:
     """处理 verify 子命令（转译正确率验证）。"""
+    from src.pipeline import resolve_database
     from src.verifier.runner import VerifyRunner
 
     input_dir = Path(args.input_dir)
-    source = _DIALECT_CHOICES[args.source]
-    target = _DIALECT_CHOICES[args.target]
+    source_dialect, source_version = _parse_dialect_version(args.source)
+    target_dialect, target_version = _parse_dialect_version(args.target)
+
+    # 校验方言是否在已注册数据库中
+    resolve_database(source_dialect)
+    resolve_database(target_dialect)
+
+    source = _DIALECT_CHOICES[source_dialect]
+    target = _DIALECT_CHOICES[target_dialect]
 
     runner = VerifyRunner()
     report = runner.run(
@@ -256,7 +298,9 @@ def _handle_verify(args: argparse.Namespace) -> None:
         "Level 2 - 语义等价率: %.1f%% (%d/%d)",
         report.metrics.equivalence_rate * 100,
         report.metrics.equivalent,
-        report.metrics.equivalent + report.metrics.partial_match + report.metrics.mismatch,
+        report.metrics.equivalent
+        + report.metrics.partial_match
+        + report.metrics.mismatch,
     )
     logger.info(
         "  equivalent=%d | partial=%d | mismatch=%d | target_error=%d | source_error=%d | skip=%d",
@@ -273,24 +317,34 @@ def _handle_verify(args: argparse.Namespace) -> None:
 
 def _handle_run(args: argparse.Namespace) -> None:
     """处理 run 子命令（端到端流水线）。"""
+    from src.pipeline import resolve_database
+
     input_dir = Path(args.input_dir)
-    source_dialect = args.source
-    target_dialect = args.target
+    source_dialect, source_version = _parse_dialect_version(args.source)
+    target_dialect, target_version = _parse_dialect_version(args.target)
     mode = args.mode
+
+    # 校验方言是否在已注册数据库中
+    resolve_database(source_dialect)
+    resolve_database(target_dialect)
 
     # 确定每条种子的变异数量（仅 fuzz 模式）：CLI 参数 > config.yaml > 默认值 3
     count = args.count
     if mode == "fuzz" and count is None:
         try:
             config = ConfigLoader()
-            count = config.get("mutation.policies.balanced_default.max_mutations_per_seed", 3)
+            count = config.get(
+                "mutation.policies.balanced_default.max_mutations_per_seed", 3
+            )
         except FileNotFoundError:
             count = 3
 
     result = CampaignRunner().run(
         input_dir=input_dir,
         source_dialect=source_dialect,
+        source_version=source_version,
         target_dialect=target_dialect,
+        target_version=target_version,
         mode=mode,
         count_per_seed=count or 3,
         random_seed=args.seed,
@@ -304,7 +358,11 @@ def _handle_run(args: argparse.Namespace) -> None:
         else:
             logger.info(
                 "  [%s] %d 执行 | %d 成功 | %d 失败 | %.0f ms",
-                tr.target_name, tr.total_executed, tr.success, tr.error, tr.elapsed_ms,
+                tr.target_name,
+                tr.total_executed,
+                tr.success,
+                tr.error,
+                tr.elapsed_ms,
             )
     logger.info("输出目录: %s", result.output_dir)
     if result.report_path:
