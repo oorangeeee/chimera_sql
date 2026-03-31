@@ -66,7 +66,7 @@ cp config/config.template.yaml config/config.yaml
 
 - `oracle.host` / `oracle.port` / `oracle.service_name` / `oracle.user` / `oracle.password`
 - `sqlite.db_path`
-- `targets`（`run` 子命令使用的目标库列表）
+- `databases`（`run` 子命令使用的数据库列表）
 
 ### 初始化测试基础设施
 
@@ -83,7 +83,7 @@ python main.py init
 将指定目录下的所有 SQL 文件从源方言转译为目标方言：
 
 ```bash
-python main.py transpile <输入目录> -s <源方言> -t <目标方言>
+python main.py transpile <输入目录> -s <源方言:版本> -t <目标方言:版本>
 ```
 
 **参数说明：**
@@ -91,17 +91,17 @@ python main.py transpile <输入目录> -s <源方言> -t <目标方言>
 | 参数 | 说明 |
 |------|------|
 | `<输入目录>` | 包含 .sql 文件的目录（递归扫描所有子目录） |
-| `-s / --source` | 源 SQL 方言（`sqlite` 或 `oracle`），种子 SQL 必须与该方言兼容 |
-| `-t / --target` | 目标 SQL 方言（`sqlite` 或 `oracle`） |
+| `-s / --source` | 源 SQL 方言及版本（如 `sqlite:3.45.0` 或 `oracle:21c`），种子 SQL 必须与该方言兼容 |
+| `-t / --target` | 目标 SQL 方言及版本（如 `oracle:21c` 或 `sqlite:3.45.0`） |
 
 **示例：**
 
 ```bash
 # 将所有种子 SQL 从 SQLite 方言转译为 Oracle 方言
-python main.py transpile data/seeds -s sqlite -t oracle
+python main.py transpile data/seeds -s sqlite:3.45.0 -t oracle:21c
 
 # 反向：Oracle → SQLite
-python main.py transpile data/seeds -s oracle -t sqlite
+python main.py transpile data/seeds -s oracle:21c -t sqlite:3.45.0
 ```
 
 **输出结构：**
@@ -123,7 +123,7 @@ result/
 对指定目录下的种子 SQL 文件执行 AST 级变异，生成模糊测试用例：
 
 ```bash
-python main.py mutate <输入目录> -d <方言> [-v <版本>] [-n <数量>] [--seed <随机种子>]
+python main.py mutate <输入目录> -d <方言:版本> [-n <数量>] [--seed <随机种子>]
 ```
 
 **参数说明：**
@@ -131,8 +131,7 @@ python main.py mutate <输入目录> -d <方言> [-v <版本>] [-n <数量>] [--
 | 参数 | 说明 |
 |------|------|
 | `<输入目录>` | 包含 .sql 种子文件的目录（递归扫描） |
-| `-d / --dialect` | 目标数据库方言（如 `sqlite`, `oracle`），种子 SQL 必须与该方言兼容 |
-| `-v / --version` | 数据库版本（可选，如 `21c`，用于匹配 config.yaml 能力画像） |
+| `-d / --dialect` | 目标数据库方言及版本（如 `sqlite:3.45.0` 或 `oracle:21c`），种子 SQL 必须与该方言兼容 |
 | `-n / --count` | 每条种子生成的变异数量（默认从 config.yaml `mutation.policies.balanced_default.max_mutations_per_seed` 读取） |
 | `--seed` | 随机种子（可选，用于可复现结果） |
 
@@ -140,13 +139,13 @@ python main.py mutate <输入目录> -d <方言> [-v <版本>] [-n <数量>] [--
 
 ```bash
 # 默认变异（每条种子 3 个变异）
-python main.py mutate data/seeds -d sqlite
+python main.py mutate data/seeds -d sqlite:3.45.0
 
 # 指定数量和随机种子（可复现）
-python main.py mutate data/seeds -d sqlite -n 5 --seed 42
+python main.py mutate data/seeds -d sqlite:3.45.0 -n 5 --seed 42
 
 # 针对 Oracle 21c
-python main.py mutate data/seeds -d oracle -v 21c
+python main.py mutate data/seeds -d oracle:21c
 ```
 
 **输出结构：**
@@ -183,7 +182,7 @@ result/
 `run` 子命令支持两种模式，通过 `--mode` 参数控制：
 
 ```bash
-python main.py run <输入目录> -s <源方言> -t <目标方言> [--mode {fuzz,exec}] [-n <数量>] [--seed <随机种子>]
+python main.py run <输入目录> -s <源方言:版本> -t <目标方言:版本> [--mode {fuzz,exec}] [-n <数量>] [--seed <随机种子>]
 ```
 
 **参数说明：**
@@ -191,26 +190,24 @@ python main.py run <输入目录> -s <源方言> -t <目标方言> [--mode {fuzz
 | 参数 | 必需 | 说明 |
 |------|------|------|
 | `<输入目录>` | 是 | 包含 .sql 文件的目录（递归扫描） |
-| `-s / --source` | 是 | 源 SQL 的方言（`sqlite` 或 `oracle`），SQL 必须与该方言兼容 |
-| `-t / --target` | 是 | 目标 SQL 的方言（与源方言相同时跳过转译） |
+| `-s / --source` | 是 | 源 SQL 的方言及版本（如 `sqlite:3.45.0` 或 `oracle:21c`），SQL 必须与该方言兼容 |
+| `-t / --target` | 是 | 目标 SQL 的方言及版本（与源方言相同时跳过转译） |
 | `--mode` | 否 | 流水线模式：`fuzz`（默认，转译→变异→执行→分析）或 `exec`（转译→执行→分析） |
 | `-n / --count` | 否 | `[fuzz]` 每条种子生成的变异数量（默认从 config.yaml 读取，兜底 3） |
 | `--seed` | 否 | `[fuzz]` 随机种子（用于可复现结果） |
 
-**目标匹配：** `-t` 指定方言后，流水线自动从 `config.yaml` 的 `targets` 节匹配第一个方言一致的目标数据库。
+**目标匹配：** `-t` 指定方言后，流水线自动从 `config.yaml` 的 `databases` 节匹配第一个方言一致的目标数据库。版本号从 CLI 参数中获取。
 
-**目标数据库配置**（`config.yaml` 的 `targets` 节）：
+**已对接的数据库配置**（`config.yaml` 的 `databases` 节）：
 
 ```yaml
-targets:
-  oracle_xe:
+databases:
+  oracle:
     db_type: "oracle"
-    dialect: "oracle"
-    version: "21c"
-  sqlite_local:
+    sqlglot_dialect: "oracle"
+  sqlite:
     db_type: "sqlite"
-    dialect: "sqlite"
-    version: ""
+    sqlglot_dialect: "sqlite"
 ```
 
 #### `--mode fuzz`（默认）：转译 → 变异 → 执行 → 分析
@@ -219,13 +216,13 @@ targets:
 
 ```bash
 # 同方言回归（跳过转译，仅变异→执行→分析）
-python main.py run data/seeds -s sqlite -t sqlite -n 2
+python main.py run data/seeds -s sqlite:3.45.0 -t sqlite:3.45.0 -n 2
 
 # 跨方言（转译→变异→执行→分析）
-python main.py run data/seeds -s sqlite -t oracle -n 2
+python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c -n 2
 
 # 指定变异数量和随机种子
-python main.py run data/seeds -s sqlite -t oracle -n 5 --seed 42
+python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c -n 5 --seed 42
 ```
 
 **输出结构：**
@@ -250,10 +247,10 @@ result/
 
 ```bash
 # 跨方言转译执行
-python main.py run data/seeds -s sqlite -t oracle --mode exec
+python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c --mode exec
 
 # 同方言执行（跳过转译）
-python main.py run data/seeds -s sqlite -t sqlite --mode exec
+python main.py run data/seeds -s sqlite:3.45.0 -t sqlite:3.45.0 --mode exec
 ```
 
 **输出结构：**
@@ -377,16 +374,15 @@ mutation:
 
 如果 SQLGlot 无法自动处理 MySQL 与其他方言之间的某些语法差异，在 `src/core/transpiler/rules/` 中添加自定义转译规则，并在 `rule_registry.py` 中注册。
 
-### 5. 目标配置
+### 5. 数据库配置
 
-在 `config/config.yaml` 的 `targets` 中添加 MySQL 目标：
+在 `config/config.yaml` 的 `databases` 中添加 MySQL：
 
 ```yaml
-targets:
-  mysql_local:
+databases:
+  mysql:
     db_type: "mysql"
-    dialect: "mysql"
-    version: "8.0"
+    sqlglot_dialect: "mysql"
 ```
 
 ### 6. Dialect 枚举（如需转译）

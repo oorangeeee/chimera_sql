@@ -282,7 +282,7 @@ src/pipeline/
 
 **同方言回归模式:**
 
-当 `-s` 和 `-t` 指定相同方言时（如 `run data/seeds -s sqlite -t sqlite`），流水线自动跳过转译阶段，仅执行"变异 → 执行 → 分析"。此模式用于验证变异引擎本身的正确性，排除转译因素的干扰。
+当 `-s` 和 `-t` 指定相同方言时（如 `run data/seeds -s sqlite:3.45.0 -t sqlite:3.45.0`），流水线自动跳过转译阶段，仅执行"变异 → 执行 → 分析".此模式用于验证变异引擎本身的正确性，排除转译因素的干扰.
 
 **用户交互设计:**
 
@@ -305,19 +305,19 @@ src/pipeline/
 - 转译失败时使用变异后的原始 SQL（带警告标记），继续执行。
 - 单条 SQL 执行失败记录错误信息，不中断批处理。
 
-**目标数据库配置（config.yaml targets 节）:**
+**已对接的数据库配置（config.yaml databases 节）:**
 
 ```yaml
-targets:
-  oracle_xe:
-    db_type: "oracle"      # ConnectorFactory.create() 的参数
-    dialect: "oracle"      # 用于转译和变异能力画像
-    version: "21c"         # 用于能力画像版本匹配
-  sqlite_local:
+databases:
+  oracle:
+    db_type: "oracle"         # ConnectorFactory.create() 的参数
+    sqlglot_dialect: "oracle" # 用于转译和变异能力画像
+  sqlite:
     db_type: "sqlite"
-    dialect: "sqlite"
-    version: ""
+    sqlglot_dialect: "sqlite"
 ```
+
+版本号通过 CLI 参数 `-t oracle:21c` 传入，用于能力画像版本匹配。
 
 **输出目录结构:**
 
@@ -550,7 +550,7 @@ python main.py init
 由 `BatchMutationRunner` 类编排，递归扫描输入目录下所有 `.sql` 种子文件，构建目标方言的能力画像，通过 `MutationEngine` 逐条生成多个变异版本，按原目录层级写入输出目录，并由 `MutationReport` 生成 Markdown + JSON 双格式报告。
 
 ```bash
-python main.py mutate <输入目录> -d <方言> [-v <版本>] [-n <数量>] [--seed <随机种子>]
+python main.py mutate <输入目录> -d <方言:版本> [-n <数量>] [--seed <随机种子>]
 ```
 
 **变异数量优先级:** CLI `-n` 参数 > `config.yaml` 中 `mutation.policies.balanced_default.max_mutations_per_seed` > 默认值 3。
@@ -568,7 +568,7 @@ python main.py mutate <输入目录> -d <方言> [-v <版本>] [-n <数量>] [--
 由 `BatchTranspileRunner` 类编排，递归扫描输入目录下所有 `.sql` 文件，通过 `SQLTranspiler` 逐条转译后按相同目录层级写入输出目录，并由 `TranspileReport` 生成 Markdown + JSON 双格式报告。
 
 ```bash
-python main.py transpile <输入目录> -s <源方言> -t <目标方言>
+python main.py transpile <输入目录> -s <源方言:版本> -t <目标方言:版本>
 ```
 
 **输出目录命名规则:** `result/{时间戳}_{源方言}_{目标方言}/`
@@ -582,7 +582,7 @@ python main.py transpile <输入目录> -s <源方言> -t <目标方言>
 由 `CampaignRunner` 类编排，串联变异引擎、方言转译器、数据库连接器和分析模块，实现完整的端到端模糊测试流程：读取种子 SQL → AST 变异 → 方言转译（可选）→ 单目标数据库执行 → 多维度分析报告。
 
 ```bash
-python main.py run <输入目录> -s <源方言> -t <目标方言> [-n <数量>] [--seed <随机种子>]
+python main.py run <输入目录> -s <源方言:版本> -t <目标方言:版本> [-n <数量>] [--seed <随机种子>]
 ```
 
 **参数说明:**
@@ -612,13 +612,13 @@ python main.py run <输入目录> -s <源方言> -t <目标方言> [-n <数量>]
 
 ```bash
 # SQLite 种子变异后直接在 SQLite 执行（同方言回归，跳过转译）
-python main.py run data/seeds -s sqlite -t sqlite -n 2
+python main.py run data/seeds -s sqlite:3.45.0 -t sqlite:3.45.0 -n 2
 
 # SQLite 种子变异后转译为 Oracle 并执行
-python main.py run data/seeds -s sqlite -t oracle -n 2
+python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c -n 2
 
 # 指定随机种子（可复现）
-python main.py run data/seeds -s sqlite -t oracle -n 5 --seed 42
+python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c -n 5 --seed 42
 ```
 
 ## 5. 关键技术实现原理
