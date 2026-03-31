@@ -63,3 +63,14 @@ class SQLiteConnector(DBConnector):
             self._conn.close()
             self._conn = None
             logger.info("SQLite connection closed")
+
+    def get_version(self) -> str:
+        """查询 SQLite 版本。"""
+        self._ensure_connection()
+        cursor = self._conn.cursor()  # type: ignore
+        try:
+            cursor.execute("SELECT sqlite_version()")
+            row = cursor.fetchone()
+            return row[0] if row else ""
+        finally:
+            cursor.close()

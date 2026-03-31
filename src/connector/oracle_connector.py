@@ -88,3 +88,14 @@ class OracleConnector(DBConnector):
             self._conn.close()
             self._conn = None
             logger.info("Oracle connection closed")
+
+    def get_version(self) -> str:
+        """查询 Oracle 数据库版本。"""
+        conn = self._ensure_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT version FROM v$instance")
+            row = cursor.fetchone()
+            return row[0] if row else ""
+        finally:
+            cursor.close()

@@ -20,5 +20,9 @@ class DBConnector(ABC):
         """执行查询并以元组列表形式返回结果集。"""
 
     @abstractmethod
+    def get_version(self) -> str:
+        """查询数据库版本。"""
+
+    @abstractmethod
     def close(self) -> None:
         """释放连接及相关资源。"""
