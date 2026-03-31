@@ -36,7 +36,7 @@ def _parse_dialect_version(raw: str) -> tuple:
     if ":" not in raw:
         raise ValueError(
             f"参数格式错误: '{raw}'。"
-            f"请使用 dialect:version 格式，如 oracle:21c 或 sqlite:3.45.0。"
+            f"请使用 dialect:version 格式，如 oracle:21c 或 sqlite:3.52.0。"
         )
     dialect, version = raw.split(":", 1)
     dialect = dialect.strip()
@@ -79,7 +79,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         required=True,
-        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.45.0）",
+        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.52.0）",
     )
     tp.add_argument(
         "-t",
@@ -130,7 +130,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         required=True,
-        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.45.0）",
+        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.52.0）",
     )
     vf.add_argument(
         "-t",
@@ -157,7 +157,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "-s",
         "--source",
         required=True,
-        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.45.0）",
+        help="源 SQL 方言（格式: dialect:version，如 sqlite:3.52.0）",
     )
     rn.add_argument(
         "-t",
@@ -167,9 +167,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     rn.add_argument(
         "--mode",
+        required=True,
         choices=["fuzz", "exec"],
-        default="fuzz",
-        help="流水线模式: fuzz=变异→转译→执行→分析（默认）, exec=转译→执行→分析",
+        help="流水线模式: fuzz=变异→转译→执行→分析, exec=转译→执行→分析",
     )
     rn.add_argument(
         "-n",

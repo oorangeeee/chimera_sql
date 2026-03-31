@@ -282,7 +282,7 @@ src/pipeline/
 
 **同方言回归模式:**
 
-当 `-s` 和 `-t` 指定相同方言时（如 `run data/seeds -s sqlite:3.45.0 -t sqlite:3.45.0`），流水线自动跳过转译阶段，仅执行"变异 → 执行 → 分析".此模式用于验证变异引擎本身的正确性，排除转译因素的干扰.
+当 `-s` 和 `-t` 指定相同方言时（如 `run data/seeds -s sqlite:3.52.0 -t sqlite:3.52.0`），流水线自动跳过转译阶段，仅执行"变异 → 执行 → 分析".此模式用于验证变异引擎本身的正确性，排除转译因素的干扰.
 
 **用户交互设计:**
 
@@ -612,13 +612,13 @@ python main.py run <输入目录> -s <源方言:版本> -t <目标方言:版本>
 
 ```bash
 # SQLite 种子变异后直接在 SQLite 执行（同方言回归，跳过转译）
-python main.py run data/seeds -s sqlite:3.45.0 -t sqlite:3.45.0 -n 2
+python main.py run data/seeds -s sqlite:3.52.0 -t sqlite:3.52.0 -n 2
 
 # SQLite 种子变异后转译为 Oracle 并执行
-python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c -n 2
+python main.py run data/seeds -s sqlite:3.52.0 -t oracle:21c -n 2
 
 # 指定随机种子（可复现）
-python main.py run data/seeds -s sqlite:3.45.0 -t oracle:21c -n 5 --seed 42
+python main.py run data/seeds -s sqlite:3.52.0 -t oracle:21c -n 5 --seed 42
 ```
 
 ## 5. 关键技术实现原理

@@ -83,7 +83,7 @@ class CampaignRunner:
         source_version: str,
         target_dialect: str,
         target_version: str,
-        mode: str = "fuzz",
+        mode: str,
         count_per_seed: int = 3,
         random_seed: Optional[int] = None,
     ) -> CampaignResult:

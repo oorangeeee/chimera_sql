@@ -43,6 +43,14 @@ mutation:
         - "nvl2"
         - "median"
         - "except_all"
+    sqlite_3_52_0:
+      dbms: "sqlite"
+      version: "3.52.0"
+      features:
+        - "recursive_cte"
+        - "window_functions"
+        - "json_extract"
+        - "except_op"
 
   policies:
     balanced_default:
