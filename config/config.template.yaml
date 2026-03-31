@@ -48,13 +48,11 @@ mutation:
     balanced_default:
       max_mutations_per_seed: 3
 
-# 目标数据库定义（用于 run 子命令）
-targets:
-  oracle_xe:
-    db_type: "oracle"      # ConnectorFactory.create() 的参数
-    dialect: "oracle"      # Dialect 枚举值，用于转译 + 变异能力画像
-    version: "21c"         # 用于变异能力画像的版本匹配
-  sqlite_local:
+# 项目已对接的数据库类型
+databases:
+  oracle:
+    db_type: "oracle"            # ConnectorFactory.create() 的参数
+    sqlglot_dialect: "oracle"    # SQLGlot 方言名，用于转译 + 变异能力画像
+  sqlite:
     db_type: "sqlite"
-    dialect: "sqlite"
-    version: ""
+    sqlglot_dialect: "sqlite"
