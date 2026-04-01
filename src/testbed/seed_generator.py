@@ -511,7 +511,7 @@ _SEEDS: Dict[str, List[Tuple[str, str]]] = {
         (
             "date_comparison.sql",
             "SELECT id, username, birth_date FROM t_users "
-            "WHERE birth_date > DATE '1990-01-01' ORDER BY id",
+            "WHERE birth_date > DATE('1990-01-01') ORDER BY id",
         ),
         (
             "date_cast.sql",
@@ -521,13 +521,13 @@ _SEEDS: Dict[str, List[Tuple[str, str]]] = {
         ),
         (
             "date_coalesce.sql",
-            "SELECT id, name, COALESCE(release_date, DATE '2000-01-01') AS effective_date "
+            "SELECT id, name, COALESCE(release_date, DATE('2000-01-01')) AS effective_date "
             "FROM t_products ORDER BY id",
         ),
         (
             "date_between.sql",
             "SELECT id, name, release_date FROM t_products "
-            "WHERE release_date BETWEEN DATE '2023-01-01' AND DATE '2024-12-31' ORDER BY id",
+            "WHERE release_date BETWEEN DATE('2023-01-01') AND DATE('2024-12-31') ORDER BY id",
         ),
         (
             "date_order.sql",

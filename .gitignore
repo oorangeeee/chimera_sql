@@ -45,3 +45,7 @@ result/
 docs/
 
 PROJECT_STRUCTURE.md
+
+graduationn_thesis/
+
+tests/transpile_correctness_result

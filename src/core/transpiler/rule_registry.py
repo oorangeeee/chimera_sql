@@ -7,7 +7,9 @@ from .rule_base import TranspilationRule
 from .rules import (
     AddFromDualRule,
     AddRecursiveKeywordRule,
+    DateFuncToToDateLiteralRule,
     FixAggregateStarRule,
+    GroupConcatToListaggRule,
     JsonExtractToJsonValueRule,
     JsonValueToJsonExtractRule,
     RemoveRecursiveKeywordRule,
@@ -81,6 +83,8 @@ def create_default_registry() -> RuleRegistry:
 
     # SQLite → Oracle
     registry.register(Dialect.SQLITE, Dialect.ORACLE, JsonExtractToJsonValueRule())
+    registry.register(Dialect.SQLITE, Dialect.ORACLE, DateFuncToToDateLiteralRule())
+    registry.register(Dialect.SQLITE, Dialect.ORACLE, GroupConcatToListaggRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, RemoveRecursiveKeywordRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, UnwrapGroupBySubqueriesRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, AddFromDualRule())

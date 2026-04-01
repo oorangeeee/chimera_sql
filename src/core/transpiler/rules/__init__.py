@@ -6,6 +6,7 @@ from .group_by_subquery_rules import UnwrapGroupBySubqueriesRule
 from .json_rules import JsonExtractToJsonValueRule, JsonValueToJsonExtractRule
 from .recursive_rules import AddRecursiveKeywordRule, RemoveRecursiveKeywordRule
 from .set_op_rules import ExceptToMinusRule
+from .sqlite_func_rules import DateFuncToToDateLiteralRule, GroupConcatToListaggRule
 
 __all__ = [
     "FixAggregateStarRule",
@@ -16,4 +17,6 @@ __all__ = [
     "RemoveRecursiveKeywordRule",
     "AddRecursiveKeywordRule",
     "ExceptToMinusRule",
+    "DateFuncToToDateLiteralRule",
+    "GroupConcatToListaggRule",
 ]
