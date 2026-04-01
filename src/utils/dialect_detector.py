@@ -90,7 +90,7 @@ _ORACLE_SIGNATURES: List[Pattern] = [
 # ── 方言 → 与之不兼容的签名集合 ──
 # 例如：检测 Oracle 兼容性时，若 SQL 中存在 SQLite 特征则不兼容。
 # 扩展新数据库：在此字典中添加一行即可，例如：
-#   "mysql": _ORACLE_SIGNATURES + _SQLITE_SIGNATURES,
+#   "newdb": _ORACLE_SIGNATURES + _SQLITE_SIGNATURES,
 _INCOMPATIBLE: Dict[str, List[Pattern]] = {
     "oracle": _SQLITE_SIGNATURES,
     "sqlite": _ORACLE_SIGNATURES,

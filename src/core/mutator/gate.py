@@ -7,8 +7,12 @@ from typing import Tuple
 
 import sqlglot.expressions as exp
 
+from src.utils.logger import get_logger
+
 from .capability import CapabilityProfile
 from .strategy_base import MutationStrategy
+
+logger = get_logger("mutator.gate")
 
 
 class RuleGate:
@@ -37,10 +41,18 @@ class RuleGate:
         # 检查能力标志
         for flag in strategy.requires:
             if not profile.has(flag):
+                logger.debug(
+                    "门控拒绝: 策略=%s, 节点=%s, 原因=缺少能力 %s",
+                    strategy.id, type(node).__name__, flag,
+                )
                 return False, f"缺少能力: {flag}"
 
         # 检查节点类型
         if not isinstance(node, strategy.node_types):
+            logger.debug(
+                "门控拒绝: 策略=%s, 节点=%s, 原因=目标类型不匹配",
+                strategy.id, type(node).__name__,
+            )
             return False, f"节点类型不匹配: {type(node).__name__}"
 
         return True, "ok"

@@ -21,8 +21,8 @@ logger = get_logger("chimera")
 _DIALECT_CHOICES = {d.value: d for d in Dialect}
 
 
-def _parse_dialect_version(raw: str) -> tuple:
-    """解析 dialect:version 格式的参数。
+def _validate_dialect(raw: str) -> tuple:
+    """解析并校验 dialect:version 参数。
 
     Args:
         raw: 原始参数字符串，如 "oracle:21c"。
@@ -31,7 +31,7 @@ def _parse_dialect_version(raw: str) -> tuple:
         (dialect, version) 元组。
 
     Raises:
-        ValueError: 格式错误或方言不在 _DIALECT_CHOICES 中。
+        ValueError: 格式错误、方言不支持、或未在 config.yaml 中注册。
     """
     if ":" not in raw:
         raise ValueError(
@@ -49,7 +49,30 @@ def _parse_dialect_version(raw: str) -> tuple:
         raise ValueError(
             f"不支持的方言: '{dialect}'。支持的方言: {list(_DIALECT_CHOICES.keys())}"
         )
+    from src.pipeline import resolve_database
+    resolve_database(dialect)
     return dialect, version
+
+
+def _resolve_count(args: argparse.Namespace) -> int:
+    """解析变异数量：CLI 参数 > config.yaml > 默认值 3。
+
+    Args:
+        args: 包含 count 属性的 argparse Namespace。
+
+    Returns:
+        每条种子的变异数量。
+    """
+    count = args.count
+    if count is not None:
+        return count
+    try:
+        config = ConfigLoader()
+        return config.get(
+            "mutation.policies.balanced_default.max_mutations_per_seed", 3
+        )
+    except FileNotFoundError:
+        return 3
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -195,15 +218,9 @@ def _handle_init(_args: argparse.Namespace) -> None:
 
 def _handle_transpile(args: argparse.Namespace) -> None:
     """处理 transpile 子命令。"""
-    from src.pipeline import resolve_database
-
     input_dir = Path(args.input_dir)
-    source_dialect, source_version = _parse_dialect_version(args.source)
-    target_dialect, target_version = _parse_dialect_version(args.target)
-
-    # 校验方言是否在已注册数据库中
-    resolve_database(source_dialect)
-    resolve_database(target_dialect)
+    source_dialect, source_version = _validate_dialect(args.source)
+    target_dialect, target_version = _validate_dialect(args.target)
 
     source = _DIALECT_CHOICES[source_dialect]
     target = _DIALECT_CHOICES[target_dialect]
@@ -224,24 +241,10 @@ def _handle_transpile(args: argparse.Namespace) -> None:
 
 def _handle_mutate(args: argparse.Namespace) -> None:
     """处理 mutate 子命令。"""
-    from src.pipeline import resolve_database
-
     input_dir = Path(args.input_dir)
-    dialect, version = _parse_dialect_version(args.dialect)
+    dialect, version = _validate_dialect(args.dialect)
 
-    # 校验方言是否在已注册数据库中
-    resolve_database(dialect)
-
-    # 确定每条种子的变异数量：CLI 参数 > config.yaml > 默认值 3
-    count = args.count
-    if count is None:
-        try:
-            config = ConfigLoader()
-            count = config.get(
-                "mutation.policies.balanced_default.max_mutations_per_seed", 3
-            )
-        except FileNotFoundError:
-            count = 3
+    count = _resolve_count(args)
 
     result = BatchMutationRunner().run(
         input_dir=input_dir,
@@ -265,16 +268,11 @@ def _handle_mutate(args: argparse.Namespace) -> None:
 
 def _handle_verify(args: argparse.Namespace) -> None:
     """处理 verify 子命令（转译正确率验证）。"""
-    from src.pipeline import resolve_database
     from src.verifier.runner import VerifyRunner
 
     input_dir = Path(args.input_dir)
-    source_dialect, source_version = _parse_dialect_version(args.source)
-    target_dialect, target_version = _parse_dialect_version(args.target)
-
-    # 校验方言是否在已注册数据库中
-    resolve_database(source_dialect)
-    resolve_database(target_dialect)
+    source_dialect, source_version = _validate_dialect(args.source)
+    target_dialect, target_version = _validate_dialect(args.target)
 
     source = _DIALECT_CHOICES[source_dialect]
     target = _DIALECT_CHOICES[target_dialect]
@@ -317,27 +315,12 @@ def _handle_verify(args: argparse.Namespace) -> None:
 
 def _handle_run(args: argparse.Namespace) -> None:
     """处理 run 子命令（端到端流水线）。"""
-    from src.pipeline import resolve_database
-
     input_dir = Path(args.input_dir)
-    source_dialect, source_version = _parse_dialect_version(args.source)
-    target_dialect, target_version = _parse_dialect_version(args.target)
+    source_dialect, source_version = _validate_dialect(args.source)
+    target_dialect, target_version = _validate_dialect(args.target)
     mode = args.mode
 
-    # 校验方言是否在已注册数据库中
-    resolve_database(source_dialect)
-    resolve_database(target_dialect)
-
-    # 确定每条种子的变异数量（仅 fuzz 模式）：CLI 参数 > config.yaml > 默认值 3
-    count = args.count
-    if mode == "fuzz" and count is None:
-        try:
-            config = ConfigLoader()
-            count = config.get(
-                "mutation.policies.balanced_default.max_mutations_per_seed", 3
-            )
-        except FileNotFoundError:
-            count = 3
+    count = _resolve_count(args) if mode == "fuzz" else None
 
     result = CampaignRunner().run(
         input_dir=input_dir,
@@ -346,7 +329,7 @@ def _handle_run(args: argparse.Namespace) -> None:
         target_dialect=target_dialect,
         target_version=target_version,
         mode=mode,
-        count_per_seed=count or 3,
+        count_per_seed=count,
         random_seed=args.seed,
     )
 

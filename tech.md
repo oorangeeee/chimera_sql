@@ -359,10 +359,10 @@ DialectDetector.detect_incompatible(sql_map: Dict[str, str], dialect: str) -> Li
 仅需在 `src/utils/dialect_detector.py` 的 `_INCOMPATIBLE` 字典中添加一行映射：
 
 ```python
-_INCOMPATIBLE["mysql"] = _ORACLE_SIGNATURES + _SQLITE_SIGNATURES  # 示例
+_INCOMPATIBLE["newdb"] = _ORACLE_SIGNATURES + _SQLITE_SIGNATURES  # 示例
 ```
 
-无需改动任何检测逻辑代码，`mutate -d mysql`、`transpile -s mysql`、`run -s mysql` 自动获得校验能力。
+无需改动任何检测逻辑代码，`mutate -d newdb`、`transpile -s newdb`、`run -s newdb` 自动获得校验能力。
 
 **校验集成点:**
 
@@ -659,7 +659,7 @@ class DBConnector(ABC):
         pass
 ```
 
-任何符合 Python DB-API 2.0 标准的数据库驱动（如 pymysql, psycopg2）均可被适配到此接口中，从而实现对新数据库的支持。
+任何符合 Python DB-API 2.0 标准的数据库驱动均可被适配到此接口中，从而实现对新数据库的支持。
 
 ## 7. 部署与环境解耦
 

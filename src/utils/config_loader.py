@@ -1,7 +1,7 @@
 """采用单例模式的配置加载器。"""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -11,7 +11,7 @@ from src.utils.constants import PROJECT_ROOT
 class ConfigLoader:
     """单例配置加载器，读取 config/config.yaml。"""
 
-    _instance: "ConfigLoader" = None  # type: ignore[assignment]
+    _instance: Optional["ConfigLoader"] = None
     _config: Dict[str, Any] = {}
 
     # 项目根目录
@@ -40,9 +40,6 @@ class ConfigLoader:
         示例：
         config.get("oracle.host") -> config["oracle"]["host"]
         """
-        if not self._config:
-            return default
-
         keys = key.split(".")
         value = self._config
         for k in keys:

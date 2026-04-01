@@ -13,7 +13,11 @@ Oracle 要求递归 CTE 必须有列名列表（ORA-32039），
 
 import sqlglot.expressions as exp
 
+from src.utils.logger import get_logger
+
 from ..rule_base import TranspilationRule
+
+logger = get_logger("transpiler.rules.recursive")
 
 
 class RemoveRecursiveKeywordRule(TranspilationRule):
@@ -97,6 +101,10 @@ class RemoveRecursiveKeywordRule(TranspilationRule):
         # Oracle 递归 CTE 要求 UNION ALL（ORA-32040）
         # 变异可能把 UNION ALL 改成 UNION，此处强制恢复
         if isinstance(body, exp.Union) and body.args.get("distinct"):
+            logger.warning(
+                "递归 CTE '%s' 的 UNION DISTINCT 被强制改为 UNION ALL（Oracle ORA-32040）",
+                alias,
+            )
             body.set("distinct", False)
 
 

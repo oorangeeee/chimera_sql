@@ -335,32 +335,31 @@ ChimeraSQL/
 
 ## 扩展新数据库
 
-以新增 MySQL 为例，以下为完整的操作清单：
+以新增一种数据库方言为例，以下为完整的操作清单：
 
 ### 1. 方言兼容性校验（方言检测器）
 
-在 `src/utils/dialect_detector.py` 中添加 MySQL 的不兼容签名列表，并注册到 `_INCOMPATIBLE` 字典：
+在 `src/utils/dialect_detector.py` 中添加该方言的不兼容签名列表，并注册到 `_INCOMPATIBLE` 字典：
 
 ```python
-_MYSQL_SIGNATURES: List[Pattern] = [
-    re.compile(r"\bWITH\s+RECURSIVE\b", re.IGNORECASE),   # 如果 MySQL 不支持
-    re.compile(r"\bJSON_VALUE\s*\(", re.IGNORECASE),      # Oracle 特有
-    # ... 其他 MySQL 不兼容的语法特征
+_NEWDB_SIGNATURES: List[Pattern] = [
+    re.compile(r"\bSOME_UNIQUE_SYNTAX\b", re.IGNORECASE),
+    # ... 其他该方言不兼容的语法特征
 ]
 
-_INCOMPATIBLE["mysql"] = _ORACLE_SIGNATURES + _SQLITE_SIGNATURES  # 示例
+_INCOMPATIBLE["newdb"] = _ORACLE_SIGNATURES + _SQLITE_SIGNATURES  # 按需组合
 ```
 
 ### 2. 能力画像配置
 
-在 `config/config.yaml` 的 `mutation.profiles` 中添加 MySQL 的能力覆盖：
+在 `config/config.yaml` 的 `mutation.profiles` 中添加该方言的能力覆盖：
 
 ```yaml
 mutation:
   profiles:
-    mysql_8_0:
-      dbms: "mysql"
-      version: "8.0"
+    newdb_1_0:
+      dbms: "newdb"
+      version: "1.0"
       features:
         - "window_functions"
         - "recursive_cte"
@@ -372,19 +371,19 @@ mutation:
 
 ### 4. 方言转译规则（可选）
 
-如果 SQLGlot 无法自动处理 MySQL 与其他方言之间的某些语法差异，在 `src/core/transpiler/rules/` 中添加自定义转译规则，并在 `rule_registry.py` 中注册。
+如果 SQLGlot 无法自动处理该方言与其他方言之间的某些语法差异，在 `src/core/transpiler/rules/` 中添加自定义转译规则，并在 `rule_registry.py` 中注册。
 
 ### 5. 数据库配置
 
-在 `config/config.yaml` 的 `databases` 中添加 MySQL：
+在 `config/config.yaml` 的 `databases` 中添加该方言：
 
 ```yaml
 databases:
-  mysql:
-    db_type: "mysql"
-    sqlglot_dialect: "mysql"
+  newdb:
+    db_type: "newdb"
+    sqlglot_dialect: "newdb"
 ```
 
 ### 6. Dialect 枚举（如需转译）
 
-在 `src/core/transpiler/dialect.py` 的 `Dialect` 枚举中添加 `MYSQL = "mysql"`。
+在 `src/core/transpiler/dialect.py` 的 `Dialect` 枚举中添加对应条目。

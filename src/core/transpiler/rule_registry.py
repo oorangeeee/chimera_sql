@@ -11,6 +11,7 @@ from .rules import (
     JsonExtractToJsonValueRule,
     JsonValueToJsonExtractRule,
     RemoveRecursiveKeywordRule,
+    UnwrapGroupBySubqueriesRule,
 )
 
 
@@ -81,6 +82,7 @@ def create_default_registry() -> RuleRegistry:
     # SQLite → Oracle
     registry.register(Dialect.SQLITE, Dialect.ORACLE, JsonExtractToJsonValueRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, RemoveRecursiveKeywordRule())
+    registry.register(Dialect.SQLITE, Dialect.ORACLE, UnwrapGroupBySubqueriesRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, AddFromDualRule())
     registry.register(Dialect.SQLITE, Dialect.ORACLE, FixAggregateStarRule())
 

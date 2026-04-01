@@ -2,9 +2,6 @@
 
 Oracle 21c 已原生支持 EXCEPT，因此这些规则默认不注册到规则链中，
 仅在需要兼容旧版 Oracle 时手动注册。
-
-SQLGlot 自动将 Oracle 的 MINUS 解析为 exp.Except，
-生成 SQLite 方言时自动输出 EXCEPT，因此 MinusToExceptRule 仅作占位。
 """
 
 import re
@@ -42,23 +39,3 @@ class ExceptToMinusRule(TranspilationRule):
     def post_process(sql: str) -> str:
         """在生成的 SQL 字符串中将 EXCEPT 替换为 MINUS。"""
         return re.sub(r"\bEXCEPT\b", "MINUS", sql)
-
-
-class MinusToExceptRule(TranspilationRule):
-    """将 MINUS 转换为 EXCEPT（Oracle→SQLite）。
-
-    占位规则。SQLGlot 已自动将 Oracle 的 MINUS 解析为 exp.Except，
-    SQLite 方言生成器自动输出 EXCEPT，无需额外处理。
-    """
-
-    @property
-    def name(self) -> str:
-        return "minus_to_except"
-
-    @property
-    def description(self) -> str:
-        return "将 MINUS 转换为 EXCEPT（Oracle→SQLite，SQLGlot 已自动处理）"
-
-    def apply(self, tree: exp.Expression) -> exp.Expression:
-        # SQLGlot 自动处理，无需变换
-        return tree

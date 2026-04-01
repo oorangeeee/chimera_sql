@@ -15,6 +15,15 @@ from src.utils.logger import get_logger
 logger = get_logger("mutator.capability")
 
 
+def _extract_bool_attrs(cls_obj: type, prefix: str) -> Dict[str, bool]:
+    """从类的 vars() 中提取布尔属性，添加前缀后返回。"""
+    result: Dict[str, bool] = {}
+    for attr_name, attr_val in vars(cls_obj).items():
+        if isinstance(attr_val, bool) and not attr_name.startswith("_"):
+            result[f"{prefix}.{attr_name}"] = attr_val
+    return result
+
+
 class CapabilityProfile:
     """数据库方言能力画像。
 
@@ -73,9 +82,7 @@ class CapabilityProfile:
         dialect_cls = type(dialect_obj)
 
         # 提取 Dialect 类层级的布尔标志
-        for attr_name, attr_val in vars(dialect_cls).items():
-            if isinstance(attr_val, bool) and not attr_name.startswith("_"):
-                flags[f"dialect.{attr_name}"] = attr_val
+        flags.update(_extract_bool_attrs(dialect_cls, "dialect"))
 
         # 提取 Generator 子类的布尔标志（与基类差异）
         gen_cls = dialect_obj.generator().__class__
@@ -86,9 +93,7 @@ class CapabilityProfile:
 
         # 提取 Parser 子类的布尔标志
         parser_cls = dialect_obj.parser().__class__
-        for attr_name, attr_val in vars(parser_cls).items():
-            if isinstance(attr_val, bool) and not attr_name.startswith("_"):
-                flags[f"parser.{attr_name}"] = attr_val
+        flags.update(_extract_bool_attrs(parser_cls, "parser"))
 
         logger.debug("从 SQLGlot 提取方言 '%s' 的能力标志: %d 项", dialect_name, len(flags))
         return cls(dialect_name, flags)

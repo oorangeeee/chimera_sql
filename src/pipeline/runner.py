@@ -220,8 +220,7 @@ class CampaignRunner:
     ) -> Tuple[TargetRunResult, Dict[str, Any], List[SQLExecutionResult]]:
         """转译 → 变异 → 执行。"""
         t_start = time.perf_counter()
-        logger.info("=" * 50)
-        logger.info("处理目标: %s (dialect=%s, db_type=%s)", target_db.name, target_db.sqlglot_dialect, target_db.db_type)
+        _log_target_header(target_db)
 
         conn = self._connect_target(target_db, target_version, output_dir)
         if conn is None:
@@ -244,23 +243,19 @@ class CampaignRunner:
                 relative = sql_path.relative_to(input_dir)
                 sql_text = sql_map.get(str(relative), sql_path.read_text(encoding="utf-8").strip())
 
-                # 步骤1: 转译为目标方言
                 tp = _transpile_one(transpiler, sql_text, source, target_dialect, relative)
                 if tp is None:
                     continue
                 base_sql, transpile_rules, transpile_warnings = tp
 
-                # 步骤2: 对目标方言 SQL 执行变异
                 try:
                     mutations = engine.mutate_many(base_sql, str(relative), count_per_seed)
                 except Exception as e:
                     logger.warning("%s: 变异失败（跳过该种子）: %s", relative, e)
                     continue
 
-                # 步骤3: 逐变异写入 + 执行
                 for idx, mr in enumerate(mutations, start=1):
                     out_relative = relative.parent / f"{sql_path.stem}_mut{idx:02d}.sql"
-
                     sql_out_path = target_output / out_relative
                     sql_out_path.parent.mkdir(parents=True, exist_ok=True)
                     sql_out_path.write_text(mr.sql + "\n", encoding="utf-8")
@@ -296,8 +291,7 @@ class CampaignRunner:
     ) -> Tuple[TargetRunResult, Dict[str, Any], List[SQLExecutionResult]]:
         """转译 → 执行（无变异）。"""
         t_start = time.perf_counter()
-        logger.info("=" * 50)
-        logger.info("处理目标: %s (dialect=%s, db_type=%s)", target_db.name, target_db.sqlglot_dialect, target_db.db_type)
+        _log_target_header(target_db)
 
         conn = self._connect_target(target_db, target_version, output_dir)
         if conn is None:
@@ -413,6 +407,14 @@ class CampaignRunner:
 
 
 # ── 模块级辅助函数 ──
+
+def _log_target_header(target_db: DatabaseEntry) -> None:
+    """输出目标处理开始的日志头。"""
+    logger.info("=" * 50)
+    logger.info(
+        "处理目标: %s (dialect=%s, db_type=%s)",
+        target_db.name, target_db.sqlglot_dialect, target_db.db_type,
+    )
 
 def _skip_target(
     target_db: DatabaseEntry, reason: str, t_start: float,
