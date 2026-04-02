@@ -1,1 +1,0 @@
-SELECT id, user_id, metric_value, FIRST_VALUE(metric_value) OVER (PARTITION BY user_id ORDER BY id) AS first_val, LAST_VALUE(metric_value) OVER (PARTITION BY user_id ORDER BY id   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_val FROM t_metrics WHERE metric_value IS NOT NULL ORDER BY user_id, id

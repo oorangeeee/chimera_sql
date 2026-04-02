@@ -1,1 +1,0 @@
-SELECT id, user_id, total_price, LEAD(total_price) OVER (PARTITION BY user_id ORDER BY id) AS next_price, LAG(total_price) OVER (PARTITION BY user_id ORDER BY id) AS prev_price FROM t_orders ORDER BY user_id, id

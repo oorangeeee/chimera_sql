@@ -1,1 +1,0 @@
-SELECT p.category, COUNT(DISTINCT o.id) AS order_count, SUM(o.total_price) AS total FROM t_orders o INNER JOIN t_products p ON o.product_id = p.id INNER JOIN t_users u ON o.user_id = u.id WHERE p.category IS NOT NULL GROUP BY p.category ORDER BY p.category
