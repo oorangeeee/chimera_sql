@@ -1,6 +1,7 @@
 """转译规则集合。"""
 
 from .aggregate_rules import FixAggregateStarRule
+from .cast_rules import CastDateToToCharRule, CastIntToTruncRule
 from .from_dual_rules import AddFromDualRule
 from .group_by_subquery_rules import UnwrapGroupBySubqueriesRule
 from .json_rules import JsonExtractToJsonValueRule, JsonValueToJsonExtractRule
@@ -10,6 +11,8 @@ from .sqlite_func_rules import DateFuncToToDateLiteralRule, GroupConcatToListagg
 
 __all__ = [
     "FixAggregateStarRule",
+    "CastDateToToCharRule",
+    "CastIntToTruncRule",
     "AddFromDualRule",
     "UnwrapGroupBySubqueriesRule",
     "JsonExtractToJsonValueRule",

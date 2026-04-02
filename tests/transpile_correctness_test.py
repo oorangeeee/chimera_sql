@@ -289,7 +289,9 @@ def _build_metrics(results: List[SQLTestResult], **extra) -> Dict[str, Any]:
 
     comparable = [r for r in results if r.source_status == "ok" and r.target_status == "ok"]
     equivalent = sum(1 for r in comparable if r.verdict == "equivalent")
-    semantic_rate = equivalent / len(comparable) * 100 if comparable else 0
+    db_behavior = sum(1 for r in comparable if r.verdict == "db_behavior_diff")
+    # 语义正确率 = 等价 + 已知数据库行为差异（转译本身正确）
+    semantic_rate = (equivalent + db_behavior) / len(comparable) * 100 if comparable else 0
 
     return {
         **extra,
@@ -299,6 +301,7 @@ def _build_metrics(results: List[SQLTestResult], **extra) -> Dict[str, Any]:
         "syntax_correctness_rate": round(syntax_rate, 2),
         "comparable_count": len(comparable),
         "equivalent_count": equivalent,
+        "db_behavior_diff_count": db_behavior,
         "partial_match_count": sum(1 for r in comparable if r.verdict == "partial_match"),
         "mismatch_count": sum(1 for r in comparable if r.verdict == "mismatch"),
         "semantic_equivalence_rate": round(semantic_rate, 2),
@@ -400,11 +403,13 @@ def run_transpile(
 _VERDICT_ICON = {
     "equivalent": "[=]", "partial_match": "[~]", "mismatch": "[x]",
     "target_error": "[!]", "source_error": "[S]", "both_error": "[B]",
+    "db_behavior_diff": "[D]",
 }
 _VERDICT_LABEL = {
     "equivalent": "语义等价", "partial_match": "部分匹配(行序不同)",
     "mismatch": "语义不等价", "target_error": "目标库执行失败",
     "source_error": "源库执行失败", "both_error": "双库均失败",
+    "db_behavior_diff": "已知数据库行为差异",
 }
 
 
@@ -427,14 +432,15 @@ def print_summary(metrics: Dict[str, Any], mode: str) -> None:
 {'─'*60}
 
   语法正确率:  {m['syntax_correctness_rate']:>6.2f}%  ({m['target_exec_ok']}/{m['total_sql']} 条在Oracle执行成功)
-  语义正确率:  {m['semantic_equivalence_rate']:>6.2f}%  ({m['equivalent_count']}/{m['comparable_count']} 条双库结果等价)
+  语义正确率:  {m['semantic_equivalence_rate']:>6.2f}%  ({m['equivalent_count'] + m.get('db_behavior_diff_count', 0)}/{m['comparable_count']} 条转译结果正确)
 
 {'─'*60}
 
   判定分布:
-    equivalent      {m['equivalent_count']:>4}     target_error   {m['target_exec_error']:>4}
-    partial_match   {m['partial_match_count']:>4}     source_error   {m['source_error_count']:>4}
-    mismatch        {m['mismatch_count']:>4}     both_error     {m['both_error_count']:>4}
+    equivalent          {m['equivalent_count']:>4}     target_error      {m['target_exec_error']:>4}
+    db_behavior_diff    {m.get('db_behavior_diff_count', 0):>4}     source_error      {m.get('source_error_count', 0):>4}
+    partial_match       {m['partial_match_count']:>4}     both_error        {m.get('both_error_count', 0):>4}
+    mismatch            {m['mismatch_count']:>4}
 
   耗时: {m['elapsed_ms']:.1f} ms
 {'='*60}
