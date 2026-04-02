@@ -1,28 +1,29 @@
-"""种子 SQL 生成器 — 按类别生成覆盖各类 SQL 特性的种子文件。
+"""种子 SQL 生成器 — 通过模板引擎生成覆盖各类 SQL 特性的种子文件。
 
-生成约 107 个 .sql 文件，分为 17 个类别子目录。
-所有种子使用通用 SQL 方言，后续由 transpiler 模块转译。
+生成 ~1700 个 .sql 文件，分为方言差异（~1200）和通用标准（~500）两大类。
+所有种子使用 SQLite 方言，后续由 transpiler 模块转译。
 
 设计原则：
 1. 每条种子都带确定性 ORDER BY，保证跨数据库结果集可比较
 2. 避免数据库特有语法（不用 NVL/ROWNUM/FETCH FIRST）
-3. 只引用 5 张测试表
+3. 引用 9 张测试表
 4. 故意查询含 NULL 的列（NULL 处理是 Oracle/SQLite 差异重灾区）
-5. 不含 RIGHT JOIN（SQLite 3.39.0 前不支持）
-6. 递归 CTE 使用 WITH RECURSIVE（SQLite 要求），transpiler 转译时为 Oracle 去掉 RECURSIVE
-7. JSON 函数使用 json_extract()（SQLite 原生），transpiler 转译为 Oracle 的 JSON_VALUE()
+5. JSON 函数使用 json_extract()（SQLite 原生），transpiler 转译为 Oracle 的 JSON_VALUE()
 """
 
+import sqlite3
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from src.testbed.seed_templates import discover_templates
+from src.testbed.seed_templates.base import SchemaMetadata, SeedSQL
 from src.utils.config_loader import ConfigLoader
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 # ────────────────────────────────────────────────────────
-# 种子 SQL 定义（类别名 → [(文件名, SQL语句), ...]）
+# 原有硬编码种子 SQL（保留兼容，模板引擎优先）
 # ────────────────────────────────────────────────────────
 
 _SEEDS: Dict[str, List[Tuple[str, str]]] = {
@@ -717,7 +718,7 @@ _SEEDS: Dict[str, List[Tuple[str, str]]] = {
         (
             "cast_float_to_int.sql",
             "SELECT id, name, ROUND(weight_kg) AS weight_int "
-            "FROM t_products WHERE weight_kg IS NOT NULL ORDER BY id",
+            "FROM t_products WHERE weight_kg IS NOT None ORDER BY id",
         ),
         (
             "cast_in_expression.sql",
@@ -731,35 +732,87 @@ _SEEDS: Dict[str, List[Tuple[str, str]]] = {
 class SeedGenerator:
     """种子 SQL 文件生成器。
 
-    将预定义的种子 SQL 按类别写入 data/seeds/ 目录，
-    每个 .sql 文件包含单条 SQL 语句。
+    优先使用模板引擎生成种子 SQL，同时保留原有硬编码种子兼容。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, db_path: str = "") -> None:
         config = ConfigLoader()
         seed_dir = config.get("fuzzing.seed_dir", "data/seeds")
         # 以项目根目录为基准解析相对路径
         project_root = Path(__file__).resolve().parent.parent.parent
         self._seed_dir = project_root / seed_dir
+        self._db_path = db_path or str(project_root / "data" / "test.db")
+        self._project_root = project_root
 
     def generate_all(self) -> None:
-        """生成所有类别的种子 SQL 文件。"""
+        """生成所有种子 SQL 文件（模板引擎 + 硬编码兼容）。"""
         logger.info("开始生成种子 SQL 文件 ...")
 
+        # ── 阶段 1: 模板引擎生成 ──
+        template_seeds = self._generate_from_templates()
         total_files = 0
+
+        # 按类别写入
+        by_category: Dict[str, List[SeedSQL]] = {}
+        for seed in template_seeds:
+            by_category.setdefault(seed.category, []).append(seed)
+
+        for category, seeds in sorted(by_category.items()):
+            category_dir = self._seed_dir / category
+            category_dir.mkdir(parents=True, exist_ok=True)
+            for i, seed in enumerate(seeds, 1):
+                filename = f"{i:04d}_{seed.tags[0] if seed.tags else 'seed'}.sql"
+                filepath = category_dir / filename
+                filepath.write_text(seed.sql + "\n", encoding="utf-8")
+                total_files += 1
+            logger.info("类别 %s: 生成 %d 个种子文件", category, len(seeds))
+
+        # ── 阶段 2: 原有硬编码种子（保留兼容） ──
         for category, seeds in _SEEDS.items():
             category_dir = self._seed_dir / category
             category_dir.mkdir(parents=True, exist_ok=True)
-
             for filename, sql in seeds:
                 filepath = category_dir / filename
                 filepath.write_text(sql + "\n", encoding="utf-8")
                 total_files += 1
-
-            logger.info("类别 %s: 生成 %d 个种子文件", category, len(seeds))
+            logger.info("类别 %s (遗留): 保留 %d 个种子文件", category, len(seeds))
 
         logger.info(
-            "种子 SQL 生成完成（共 %d 个类别, %d 个文件）",
-            len(_SEEDS),
+            "种子 SQL 生成完成（共 %d 个文件）",
             total_files,
         )
+
+        # 打印各域统计
+        if by_category:
+            logger.info("── 模板生成统计 ──")
+            for cat in sorted(by_category):
+                logger.info("  %s: %d 条", cat, len(by_category[cat]))
+
+    def _generate_from_templates(self) -> List[SeedSQL]:
+        """通过模板引擎生成种子 SQL。"""
+        import sqlite3
+
+        templates = discover_templates()
+        if not templates:
+            logger.warning("未发现任何模板，跳过模板生成")
+            return []
+
+        # 连接 SQLite 反射 schema
+        conn = sqlite3.connect(self._db_path)
+        try:
+            schema = SchemaMetadata.reflect(conn)
+        finally:
+            conn.close()
+
+        all_seeds: List[SeedSQL] = []
+        for template in templates:
+            try:
+                seeds = template.generate(schema)
+                all_seeds.extend(seeds)
+                logger.info(
+                    "模板 %s 生成 %d 条", template.category, len(seeds)
+                )
+            except Exception as e:
+                logger.error("模板 %s 生成失败: %s", template.category, e)
+
+        return all_seeds

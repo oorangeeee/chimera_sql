@@ -3,6 +3,7 @@
 编排三阶段初始化：Schema → Data → Seeds。
 """
 
+from pathlib import Path
 from typing import Sequence
 
 from src.connector.factory import ConnectorFactory
@@ -12,6 +13,8 @@ from src.testbed.seed_generator import SeedGenerator
 from src.utils.logger import get_logger
 
 logger = get_logger("init_pipeline")
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class InitPipeline:
@@ -37,8 +40,10 @@ class InitPipeline:
 
             connector.close()
 
+        # 模板引擎需要读取 SQLite 数据库来反射 schema
+        sqlite_db_path = str(_PROJECT_ROOT / "data" / "test.db")
         logger.info("=" * 50)
-        SeedGenerator().generate_all()
+        SeedGenerator(db_path=sqlite_db_path).generate_all()
 
         logger.info("=" * 50)
         logger.info("初始化流水线完成！")

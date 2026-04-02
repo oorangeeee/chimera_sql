@@ -80,7 +80,7 @@ class TableDef:
 
 
 # ────────────────────────────────────────────────────────
-# 五张测试表定义
+# 九张测试表定义（5 原有 + 4 新增）
 # ────────────────────────────────────────────────────────
 TABLES: List[TableDef] = [
     # ---------- t_users ----------
@@ -167,6 +167,82 @@ TABLES: List[TableDef] = [
         ],
         indexes=[
             IndexDef("idx_tags_entity", ["entity_type", "entity_id"]),
+        ],
+    ),
+    # ---------- t_departments ----------
+    TableDef(
+        name="t_departments",
+        columns=[
+            ColumnDef("id", "INTEGER", nullable=False, primary_key=True),
+            ColumnDef("name", "VARCHAR(50)", nullable=False),
+            ColumnDef("parent_id", "INTEGER"),  # 自关联，顶级部门为 NULL
+            ColumnDef("budget", "DECIMAL(12,2)"),
+            ColumnDef("location", "VARCHAR(100)"),
+        ],
+        foreign_keys=[
+            ForeignKeyDef("parent_id", "t_departments", "id"),
+        ],
+    ),
+    # ---------- t_employees ----------
+    TableDef(
+        name="t_employees",
+        columns=[
+            ColumnDef("id", "INTEGER", nullable=False, primary_key=True),
+            ColumnDef("name", "VARCHAR(50)", nullable=False),
+            ColumnDef("dept_id", "INTEGER"),
+            ColumnDef("salary", "DECIMAL(10,2)"),
+            ColumnDef("hire_date", "DATE"),
+            ColumnDef("manager_id", "INTEGER"),
+            ColumnDef("status", "VARCHAR(20)"),
+            ColumnDef("bio", "VARCHAR(500)"),
+        ],
+        foreign_keys=[
+            ForeignKeyDef("dept_id", "t_departments", "id"),
+            ForeignKeyDef("manager_id", "t_employees", "id"),
+        ],
+        indexes=[
+            IndexDef("idx_employees_dept", ["dept_id"]),
+        ],
+    ),
+    # ---------- t_events ----------
+    TableDef(
+        name="t_events",
+        columns=[
+            ColumnDef("id", "INTEGER", nullable=False, primary_key=True),
+            ColumnDef("event_type", "VARCHAR(30)", nullable=False),
+            ColumnDef("event_time", "TIMESTAMP"),
+            ColumnDef("event_date", "DATE"),
+            ColumnDef("payload", "VARCHAR(500)"),  # JSON
+            ColumnDef("user_id", "INTEGER"),
+        ],
+        foreign_keys=[
+            ForeignKeyDef("user_id", "t_users", "id"),
+        ],
+        indexes=[
+            IndexDef("idx_events_type", ["event_type"]),
+            IndexDef("idx_events_date", ["event_date"]),
+        ],
+    ),
+    # ---------- t_transactions ----------
+    TableDef(
+        name="t_transactions",
+        columns=[
+            ColumnDef("id", "INTEGER", nullable=False, primary_key=True),
+            ColumnDef("from_user", "INTEGER"),
+            ColumnDef("to_user", "INTEGER"),
+            ColumnDef("amount", "DECIMAL(12,2)"),
+            ColumnDef("tx_type", "VARCHAR(20)"),
+            ColumnDef("created_at", "TIMESTAMP"),
+            ColumnDef("status", "VARCHAR(20)"),
+            ColumnDef("metadata_json", "VARCHAR(500)"),  # JSON
+        ],
+        foreign_keys=[
+            ForeignKeyDef("from_user", "t_users", "id"),
+            ForeignKeyDef("to_user", "t_users", "id"),
+        ],
+        indexes=[
+            IndexDef("idx_tx_from", ["from_user"]),
+            IndexDef("idx_tx_to", ["to_user"]),
         ],
     ),
 ]

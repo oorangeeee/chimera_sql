@@ -35,7 +35,7 @@ plan.md
 
 dockers/
 # SQLite
-/data/*.db
+/data
 
 tests/seed_sql_test/result/*
 

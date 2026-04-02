@@ -244,6 +244,126 @@ _TAGS_ROWS: List[Tuple[Any, ...]] = [
     (21, "user", 4, "café"),          # 拉丁重音标签
 ]
 
+# ── t_departments ────────────────────────────────────
+_DEPARTMENTS_COLS = ("id", "name", "parent_id", "budget", "location")
+_DEPARTMENTS_ROWS: List[Tuple[Any, ...]] = [
+    (1, "Engineering", None, 500000.00, "Building A"),
+    (2, "Sales", None, 300000.00, "Building B"),
+    (3, "HR", None, 200000.00, "Building A"),
+    (4, "Frontend", 1, 150000.00, "Floor 2"),
+    (5, "Backend", 1, 180000.00, "Floor 3"),
+    (6, "Domestic", 2, 100000.00, None),
+    (7, "International", 2, None, "Building C"),
+    (8, "Recruiting", 3, 80000.00, "Floor 1"),
+    (9, "QA", 1, 0.00, "Floor 2"),
+    (10, "Other", None, -1.00, None),  # 边界预算
+]
+
+# ── t_employees ──────────────────────────────────────
+_EMPLOYEES_COLS = ("id", "name", "dept_id", "salary", "hire_date", "manager_id", "status", "bio")
+_EMPLOYEES_ROWS: List[Tuple[Any, ...]] = [
+    (1, "张三", 4, 120000.00, _d("2020-03-15"), None, "active", "Senior frontend developer"),
+    (2, "李四", 5, 95000.50, _d("2021-07-01"), None, "active", None),
+    (3, "Alice", 4, 110000.00, _d("2019-01-10"), 1, "active", '{"skills": ["React", "TypeScript"]}'),
+    (4, "Bob", 5, 130000.00, _d("2018-06-20"), 2, "active", ""),
+    (5, "王五", 6, 70000.00, _d("2022-11-01"), None, "active", "Domestic sales lead"),
+    (6, "赵六", 7, 85000.75, _d("2023-02-14"), None, "on_leave", None),
+    (7, "Carol", 8, 65000.00, None, None, "active", "HR specialist"),
+    (8, "David", 9, 90000.00, _d("2020-09-01"), None, "active", "QA engineer"),
+    (9, "陈七", 4, 0.00, _d("2024-01-01"), 1, "probation", "New grad"),
+    (10, "刘八", 5, -1.00, _d("2024-03-15"), 2, None, None),  # 负数工资边界
+    (11, "Eve", 1, 150000.00, _d("2017-05-01"), None, "active", "Engineering director"),
+    (12, "Frank", 3, 99000.99, _d("2019-12-25"), None, "active", "HR manager"),
+    (13, "黄九", 4, 105000.00, _d("2021-01-15"), 1, "active", ""),
+    (14, "林十", 6, 60000.00, None, 5, "active", "Sales rep"),
+    (15, "Grace", 5, 115000.00, _d("2020-07-01"), 2, "active", None),
+    (16, "Hank", 9, 88000.00, _d("2021-03-10"), 8, "active", "Senior QA"),
+    (17, "周十一", 7, 78000.50, _d("2022-06-01"), 6, "active", "Intl sales"),
+    (18, "吴十二", 4, 99999.99, _d("2023-01-01"), 1, "probation", None),
+    (19, "Ivy", 8, 55000.00, _d("2023-09-01"), 7, "active", "Junior recruiter"),
+    (20, "Jack", None, None, None, None, "inactive", None),  # 无部门
+    (21, "孙十三", 1, 200000.00, _d("2015-01-01"), 11, "active", "CTO"),
+    (22, "钱十四", 9, 82000.00, _d("2022-04-15"), 8, "active", "QA analyst"),
+    (23, "Karl", 3, 105000.00, _d("2020-02-01"), 12, "on_leave", ""),
+    (24, "Leo", 6, 72000.00, _d("2021-08-01"), 5, "active", "Sales associate"),
+    (25, "郑十五", 5, 100000.00, _d("2019-10-15"), 2, "active", None),
+    (26, "Mia", 4, 98000.00, _d("2022-01-01"), 1, "active", "Frontend dev"),
+    (27, "Nancy", 7, 90000.00, _d("2020-11-01"), 6, "inactive", "Former intl sales"),
+    (28, "冯十六", 8, 62000.00, _d("2023-05-01"), 7, "active", None),
+    (29, "Oscar", 1, 135000.00, _d("2018-03-01"), 11, "active", "Principal engineer"),
+    (30, "褚十七", None, 0.01, _d("2024-06-01"), None, "probation", "Intern"),
+]
+
+# ── t_events ─────────────────────────────────────────
+_EVENTS_COLS = ("id", "event_type", "event_time", "event_date", "payload", "user_id")
+_EVENTS_ROWS: List[Tuple[Any, ...]] = [
+    (1, "login", _ts("2024-06-01 08:00:00"), _d("2024-06-01"), '{"ip": "192.168.1.1"}', 1),
+    (2, "purchase", _ts("2024-06-01 10:30:00"), _d("2024-06-01"), '{"product_id": 1, "qty": 2}', 1),
+    (3, "login", _ts("2024-06-02 09:15:00"), _d("2024-06-02"), '{"ip": "10.0.0.5"}', 3),
+    (4, "logout", _ts("2024-06-02 18:00:00"), _d("2024-06-02"), None, 3),
+    (5, "click", _ts("2024-06-03 14:20:00"), _d("2024-06-03"), '{"page": "/products", "x": 100, "y": 200}', 5),
+    (6, "error", _ts("2024-06-04 03:00:00"), _d("2024-06-04"), '{"code": 500, "msg": "Internal error"}', None),
+    (7, "signup", _ts("2024-06-05 11:00:00"), _d("2024-06-05"), '{}', 9),
+    (8, "login", None, None, '{"ip": "172.16.0.1"}', 7),
+    (9, "purchase", _ts("2024-06-06 16:45:00"), _d("2024-06-06"), None, 2),
+    (10, "click", _ts("2024-06-07 08:30:00"), _d("2024-06-07"), '{"page": "/home"}', 6),
+    (11, "system", _ts("2024-06-08 00:00:00"), _d("2024-06-08"), "", 8),  # system event
+    (12, "api_call", _ts("2024-06-08 12:00:00"), _d("2024-06-08"), '{"endpoint": "/api/v1/users", "method": "GET"}', 1),
+    (13, "login", _ts("2024-06-09 07:00:00"), _d("2024-06-09"), '{"ip": "192.168.1.50"}', 10),
+    (14, "purchase", _ts("2024-06-10 20:00:00"), _d("2024-06-10"), '{"product_id": 5, "qty": 1}', 13),
+    (15, "error", _ts("2024-06-11 01:00:00"), _d("2024-06-11"), '{"code": 404}', None),
+    (16, "login", _ts("2024-06-12 09:00:00"), _d("2024-06-12"), None, 15),
+    (17, "click", _ts("2024-06-13 15:30:00"), _d("2024-06-13"), '{"page": "/cart", "items": [1, 3, 5]}', 1),
+    (18, "api_call", None, _d("2024-06-14"), '{"endpoint": "/api/v1/orders"}', 5),
+    (19, "purchase", _ts("2024-06-15 10:00:00"), None, '{"product_id": 10}', 8),
+    (20, "signup", _ts("2024-06-16 14:00:00"), _d("2024-06-16"), '{}', 14),
+    (21, "login", _ts("1970-01-01 00:00:00"), _d("1970-01-01"), '{"ip": "0.0.0.0"}', 11),  # epoch
+    (22, "error", _ts("2099-12-31 23:59:59"), _d("2099-12-31"), '{"code": 999}', 12),  # 远未来
+    (23, "click", _ts("2024-06-17 08:00:00"), _d("2024-06-17"), None, 4),
+    (24, "api_call", _ts("2024-06-18 11:30:00"), _d("2024-06-18"), '{"endpoint": "/health"}', None),
+    (25, "login", _ts("2024-06-19 06:00:00"), _d("2024-06-19"), '{"ip": "10.10.10.10"}', 6),
+    (26, "logout", _ts("2024-06-19 22:00:00"), _d("2024-06-19"), None, 6),
+    (27, "purchase", _ts("2024-06-20 09:15:00"), _d("2024-06-20"), '{"product_id": 3, "qty": 1}', 3),
+    (28, "click", _ts("2024-06-21 13:00:00"), _d("2024-06-21"), '{"page": "/profile"}', 9),
+    (29, "error", None, None, None, None),  # 全 NULL 事件
+    (30, "api_call", _ts("2024-06-22 10:00:00"), _d("2024-06-22"), '{"nested": {"key": "val"}, "arr": [1,2,3]}', 2),
+]
+
+# ── t_transactions ───────────────────────────────────
+_TRANSACTIONS_COLS = ("id", "from_user", "to_user", "amount", "tx_type", "created_at", "status", "metadata_json")
+_TRANSACTIONS_ROWS: List[Tuple[Any, ...]] = [
+    (1, 1, 2, 100.00, "transfer", _ts("2024-06-01 10:00:00"), "completed", '{"note": "rent"}'),
+    (2, 2, 3, 250.50, "transfer", _ts("2024-06-02 14:30:00"), "completed", None),
+    (3, 3, 1, 0.01, "transfer", _ts("2024-06-03 09:00:00"), "completed", '{"note": "test"}'),
+    (4, 5, 1, -1.00, "refund", _ts("2024-06-04 11:00:00"), "completed", ""),  # 负数金额
+    (5, None, 7, 500.00, "deposit", _ts("2024-06-05 08:00:00"), "completed", '{"source": "bank"}'),
+    (6, 8, None, 200.00, "withdrawal", _ts("2024-06-06 16:00:00"), "pending", None),
+    (7, 1, 5, 99999.99, "transfer", _ts("2024-06-07 12:00:00"), "failed", '{"reason": "insufficient funds"}'),
+    (8, 6, 9, 75.25, "payment", _ts("2024-06-08 10:30:00"), "completed", '{"item": "Widget A"}'),
+    (9, 10, 1, 1000.00, "transfer", None, "pending", None),
+    (10, 2, 6, 0.00, "transfer", _ts("2024-06-10 09:00:00"), "completed", '{"note": ""}'),
+    (11, 13, 3, 350.00, "payment", _ts("2024-06-11 14:00:00"), "completed", '{"items": [1, 2]}'),
+    (12, None, 4, 10000.00, "deposit", _ts("2024-06-12 08:00:00"), "completed", '{"source": "wire"}'),
+    (13, 7, 8, 88.88, "transfer", _ts("2024-06-13 11:00:00"), None, None),
+    (14, 1, 9, 555.55, "transfer", _ts("2024-06-14 15:00:00"), "completed", ""),
+    (15, 11, 2, 420.00, "payment", _ts("2024-06-15 09:30:00"), "completed", '{"item": "Gadget X"}'),
+    (16, 4, 1, 0.50, "refund", _ts("2024-06-16 10:00:00"), "completed", None),
+    (17, None, None, 0.00, "transfer", None, "failed", None),  # 无双方
+    (18, 3, 5, 2000.00, "transfer", _ts("2024-06-18 13:00:00"), "completed", '{"urgent": true}'),
+    (19, 9, 13, 120.00, "payment", _ts("2024-06-19 16:30:00"), "pending", '{"item": "Book Alpha"}'),
+    (20, 14, 1, 50.00, "transfer", _ts("2024-06-20 08:00:00"), "completed", None),
+    (21, 5, 10, 333.33, "transfer", _ts("2024-06-21 10:00:00"), "completed", '{"note": "split bill"}'),
+    (22, 6, 3, -999.99, "refund", _ts("2024-06-22 14:00:00"), "completed", '{"reason": "return"}'),
+    (23, None, 11, 5000.00, "deposit", _ts("2024-06-23 09:00:00"), "completed", '{"source": "crypto"}'),
+    (24, 12, 7, 250.00, "transfer", _ts("2024-06-24 11:00:00"), None, None),
+    (25, 8, 15, 180.00, "payment", _ts("2024-06-25 15:30:00"), "completed", '{"items": [5, 6]}'),
+    (26, 1, 6, 999.00, "transfer", _ts("2024-06-26 08:30:00"), "failed", ""),
+    (27, 2, 11, 45.50, "payment", _ts("2024-06-27 12:00:00"), "completed", '{"item": "配件Z"}'),
+    (28, None, 5, 100.00, "deposit", _ts("2024-06-28 09:00:00"), "pending", None),
+    (29, 3, 8, 777.77, "transfer", _ts("2024-06-29 10:00:00"), "completed", '{"note": "bonus"}'),
+    (30, 7, 2, 0.01, "refund", _ts("2024-06-30 16:00:00"), "completed", None),
+]
+
 # 所有表的数据集合
 _ALL_TABLE_DATA: List[Tuple[str, Tuple[str, ...], List[Tuple[Any, ...]]]] = [
     ("t_users", _USERS_COLS, _USERS_ROWS),
@@ -251,6 +371,10 @@ _ALL_TABLE_DATA: List[Tuple[str, Tuple[str, ...], List[Tuple[Any, ...]]]] = [
     ("t_orders", _ORDERS_COLS, _ORDERS_ROWS),
     ("t_metrics", _METRICS_COLS, _METRICS_ROWS),
     ("t_tags", _TAGS_COLS, _TAGS_ROWS),
+    ("t_departments", _DEPARTMENTS_COLS, _DEPARTMENTS_ROWS),
+    ("t_employees", _EMPLOYEES_COLS, _EMPLOYEES_ROWS),
+    ("t_events", _EVENTS_COLS, _EVENTS_ROWS),
+    ("t_transactions", _TRANSACTIONS_COLS, _TRANSACTIONS_ROWS),
 ]
 
 
